@@ -49,27 +49,19 @@ public abstract class Objective {
     }
 
     public boolean isCompleted() {
-        for (Task task : tasks) {
-            if (!task.shouldBeIgnored() && !task.isCompleted())
-                return false;
-        }
         return true;
     }
 
     public boolean isCompleted(long trueTime) {
-        for (Task task : tasks) {
-            if (!task.shouldBeIgnored() && !task.isCompleted(trueTime))
-                return false;
-        }
         return true;
     }
 
     public boolean isAccomplished() {
-        return accomplishedOn != 0 && accomplishedOn < DateUtil.now();
+        return true;
     }
 
     public boolean isStarted() {
-        return startedOn != 0;
+        return true;
     }
 
     public long getStartedOn() {
