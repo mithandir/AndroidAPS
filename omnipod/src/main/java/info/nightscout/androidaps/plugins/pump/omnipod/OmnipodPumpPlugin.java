@@ -103,9 +103,9 @@ import info.nightscout.androidaps.utils.FabricPrivacy;
 import info.nightscout.androidaps.utils.Round;
 import info.nightscout.androidaps.utils.TimeChangeType;
 import info.nightscout.androidaps.utils.resources.ResourceHelper;
+import info.nightscout.androidaps.utils.rx.AapsSchedulers;
 import info.nightscout.androidaps.utils.sharedPreferences.SP;
 import io.reactivex.disposables.CompositeDisposable;
-import io.reactivex.schedulers.Schedulers;
 
 import static info.nightscout.androidaps.plugins.pump.omnipod.driver.definition.OmnipodConstants.BASAL_STEP_DURATION;
 
@@ -129,6 +129,7 @@ public class OmnipodPumpPlugin extends PumpPluginBase implements PumpInterface, 
     private final OmnipodAlertUtil omnipodAlertUtil;
     private final ProfileFunction profileFunction;
     private final AAPSLogger aapsLogger;
+    private final AapsSchedulers aapsSchedulers;
     private final RxBusWrapper rxBus;
     private final ActivePluginProvider activePlugin;
     private final Context context;
@@ -160,6 +161,7 @@ public class OmnipodPumpPlugin extends PumpPluginBase implements PumpInterface, 
     public OmnipodPumpPlugin(
             HasAndroidInjector injector,
             AAPSLogger aapsLogger,
+            AapsSchedulers aapsSchedulers,
             RxBusWrapper rxBus,
             Context context,
             ResourceHelper resourceHelper,
@@ -188,6 +190,7 @@ public class OmnipodPumpPlugin extends PumpPluginBase implements PumpInterface, 
                         .description(R.string.omnipod_pump_description), //
                 injector, aapsLogger, resourceHelper, commandQueue);
         this.aapsLogger = aapsLogger;
+        this.aapsSchedulers = aapsSchedulers;
         this.rxBus = rxBus;
         this.activePlugin = activePlugin;
         this.context = context;
@@ -284,32 +287,32 @@ public class OmnipodPumpPlugin extends PumpPluginBase implements PumpInterface, 
 
         disposables.add(rxBus
                 .toObservable(EventAppExit.class)
-                .observeOn(Schedulers.io())
+                .observeOn(aapsSchedulers.getIo())
                 .subscribe(event -> context.unbindService(serviceConnection), fabricPrivacy::logException)
         );
         disposables.add(rxBus
                 .toObservable(EventOmnipodTbrChanged.class)
-                .observeOn(Schedulers.io())
+                .observeOn(aapsSchedulers.getIo())
                 .subscribe(event -> handleCancelledTbr(), fabricPrivacy::logException)
         );
         disposables.add(rxBus
                 .toObservable(EventOmnipodUncertainTbrRecovered.class)
-                .observeOn(Schedulers.io())
+                .observeOn(aapsSchedulers.getIo())
                 .subscribe(event -> handleUncertainTbrRecovery(), fabricPrivacy::logException)
         );
         disposables.add(rxBus
                 .toObservable(EventOmnipodActiveAlertsChanged.class)
-                .observeOn(Schedulers.io())
+                .observeOn(aapsSchedulers.getIo())
                 .subscribe(event -> handleActivePodAlerts(), fabricPrivacy::logException)
         );
         disposables.add(rxBus
                 .toObservable(EventOmnipodFaultEventChanged.class)
-                .observeOn(Schedulers.io())
+                .observeOn(aapsSchedulers.getIo())
                 .subscribe(event -> handlePodFaultEvent(), fabricPrivacy::logException)
         );
         disposables.add(rxBus
                 .toObservable(EventPreferenceChange.class)
-                .observeOn(Schedulers.io())
+                .observeOn(aapsSchedulers.getIo())
                 .subscribe(event -> {
                     if (event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.BASAL_BEEPS_ENABLED) ||
                             event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.BOLUS_BEEPS_ENABLED) ||
@@ -318,7 +321,8 @@ public class OmnipodPumpPlugin extends PumpPluginBase implements PumpInterface, 
                             event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.SUSPEND_DELIVERY_BUTTON_ENABLED) ||
                             event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.PULSE_LOG_BUTTON_ENABLED) ||
                             event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.RILEY_LINK_STATS_BUTTON_ENABLED) ||
-                            event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.USE_RILEY_LINK_BATTERY_LEVEL) ||
+                            event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.SHOW_RILEY_LINK_BATTERY_LEVEL) ||
+                            event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.BATTERY_CHANGE_LOGGING_ENABLED) ||
                             event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.TIME_CHANGE_EVENT_ENABLED) ||
                             event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.NOTIFICATION_UNCERTAIN_TBR_SOUND_ENABLED) ||
                             event.isChanged(getResourceHelper(), OmnipodStorageKeys.Preferences.NOTIFICATION_UNCERTAIN_SMB_SOUND_ENABLED) ||
@@ -337,7 +341,7 @@ public class OmnipodPumpPlugin extends PumpPluginBase implements PumpInterface, 
         );
         disposables.add(rxBus
                 .toObservable(EventAppInitialized.class)
-                .observeOn(Schedulers.io())
+                .observeOn(aapsSchedulers.getIo())
                 .subscribe(event -> {
                     // See if a bolus was active before the app previously exited
                     // If so, add it to history
@@ -520,11 +524,10 @@ public class OmnipodPumpPlugin extends PumpPluginBase implements PumpInterface, 
     }
 
     @Override public RileyLinkPumpInfo getPumpInfo() {
-        String pumpDescription = "Eros";
         String frequency = resourceHelper.gs(R.string.omnipod_frequency);
-        String connectedModel = podStateManager.isPodInitialized() ? "Eros Pod" : "-";
+        String connectedModel = "Eros";
         String serialNumber = podStateManager.isPodInitialized() ? String.valueOf(podStateManager.getAddress()) : "-";
-        return new RileyLinkPumpInfo(pumpDescription, frequency, connectedModel, serialNumber);
+        return new RileyLinkPumpInfo(frequency, connectedModel, serialNumber);
     }
 
     // Required by RileyLinkPumpDevice interface.
@@ -625,9 +628,8 @@ public class OmnipodPumpPlugin extends PumpPluginBase implements PumpInterface, 
 
     @Override
     public int getBatteryLevel() {
-        if (aapsOmnipodManager.isUseRileyLinkBatteryLevel()) {
-            Integer batteryLevel = omnipodRileyLinkCommunicationManager.getBatteryLevel();
-            return batteryLevel == null ? 0 : batteryLevel;
+        if (aapsOmnipodManager.isShowRileyLinkBatteryLevel()) {
+            return Optional.ofNullable(rileyLinkServiceData.batteryLevel).orElse(0);
         }
 
         return 0;
@@ -1060,7 +1062,11 @@ public class OmnipodPumpPlugin extends PumpPluginBase implements PumpInterface, 
     }
 
     public boolean isUseRileyLinkBatteryLevel() {
-        return aapsOmnipodManager.isUseRileyLinkBatteryLevel();
+        return aapsOmnipodManager.isShowRileyLinkBatteryLevel();
+    }
+
+    public boolean isBatteryChangeLoggingEnabled() {
+        return aapsOmnipodManager.isBatteryChangeLoggingEnabled();
     }
 
     private void initializeAfterRileyLinkConnection() {

@@ -11,8 +11,7 @@
     <string name="omnipod_config_suspend_delivery_button_enabled">Pokaż przycisk wstrzymania podawania w zakładce Omnipod</string>
     <string name="omnipod_config_pulse_log_button_enabled">Pokaż przycisk Puls Log w menu zarządzania Podem</string>
     <string name="omnipod_config_rileylink_stats_button_enabled">Pokaż przycisk Statystyki RileyLink w menu zarządzania Podem</string>
-    <string name="omnipod_config_use_riley_link_battery_level">Użyj poziomu baterii zgłoszonego przez OrangeLink/EmaLink</string>
-    <string name="omnipod_config_use_riley_link_battery_level_summary">NIE działa z oryginalnym RileyLinkiem. Może nie działać z innymi alternatywami RileyLink.</string>
+    <string name="omnipod_config_battery_change_logging_enabled">Włącz rejestrowanie zmiany baterii w Akcjach</string>
     <string name="omnipod_config_time_change_enabled">Włączone wykrywanie strefy czasowej DST</string>
     <string name="omnipod_config_expiration_reminder_enabled">Przypomnienie o utracie ważności włączone</string>
     <string name="omnipod_config_expiration_reminder_hours_before_shutdown">Godziny przed wyłączeniem</string>
@@ -55,18 +54,19 @@
     <string name="omnipod_history_bolus_value_with_carbs">%1$.2f U, Węgl.=%2$.1f g</string>
     <string name="omnipod_history_tbr_value">Dawka: %1$.2f U, Czas: %2$d min</string>
     <!-- Omnipod - Short status -->
-    <string name="omnipod_short_status_no_active_pod">Brak aktywnego Poda</string>
-    <string name="omnipod_short_status_last_connection">OstatniePołączenie: %1$d min temu</string>
-    <string name="omnipod_short_status_last_bolus">OstatniBolus: %1$s @ %2$s</string>
-    <string name="omnipod_short_status_temp_basal">Tymczas: %1$s</string>
-    <string name="omnipod_short_status_extended_bolus">Rozszerzony: %1$s</string>
-    <string name="omnipod_short_status_reservoir">Zbiornik: %1$sU</string>
-    <string name="omnipod_short_status_rl_battery">RLBatt: %1$d</string>
+    <string name="omnipod_short_status_no_active_pod">Brak akt. Poda</string>
+    <string name="omnipod_short_status_last_connection">Ost.Poł.: %1$d m. temu</string>
+    <string name="omnipod_short_status_last_bolus">Ost.Bolus: %1$s @ %2$s</string>
+    <string name="omnipod_short_status_temp_basal">Tymcz.: %1$s</string>
+    <string name="omnipod_short_status_extended_bolus">Rozsz.: %1$s</string>
+    <string name="omnipod_short_status_reservoir">Zbior.: %1$sU</string>
+    <string name="omnipod_short_status_rl_battery">RLBat: %1$d</string>
     <!-- Omnipod - Error -->
     <string name="omnipod_warning">Ostrzeżenie</string>
     <string name="omnipod_error_rileylink_address_invalid">Adres RileyLink niewłaściwy.</string>
     <string name="omnipod_error_operation_not_possible_no_configuration">To działanie nie jest możliwe.\n\n Musisz skonfigurować Omnipod przed uruchomieniem tego działania.</string>
     <string name="omnipod_error_pod_not_attached">Brak aktywnego Poda</string>
+    <string name="omnipod_error_time_out_of_sync">Zegar Pod-a jest rozsynchronizowany. Proszę zaktualizować czas w zakładce Omnipod.</string>
     <string name="omnipod_error_unexpected_exception">Wystąpił nieoczekiwany błąd. Proszę zgłosić! (%1$s: %2$s).</string>
     <string name="omnipod_error_crc_mismatch">Komunikacja nie powiodła się: weryfikacja integralności komunikatu nie powiodła się</string>
     <string name="omnipod_error_invalid_packet_type">Komunikacja nie powiodła się: odebrano niepoprawny pakiet (komunikat) z Poda</string>
@@ -198,7 +198,6 @@
     <!-- Omnipod - Overview -->
     <string name="omnipod_overview_button_set_time">Ustaw czas</string>
     <string name="omnipod_overview_button_suspend_delivery">Wstrzymaj</string>
-    <string name="omnipod_overview_button_refresh">Odśwież</string>
     <string name="omnipod_overview_button_resume_delivery">Wznów podawanie</string>
     <string name="omnipod_overview_button_pod_management">Pod Mgmt</string>
     <string name="omnipod_overview_button_acknowledge_active_alerts">Alerty ack</string>

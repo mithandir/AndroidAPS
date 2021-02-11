@@ -19,8 +19,7 @@ import info.nightscout.androidaps.plugins.pump.common.defs.PumpType
 import info.nightscout.androidaps.queue.Callback
 import info.nightscout.androidaps.utils.FabricPrivacy
 import info.nightscout.androidaps.utils.extensions.plusAssign
-import info.nightscout.androidaps.utils.resources.ResourceHelper
-import io.reactivex.android.schedulers.AndroidSchedulers
+import info.nightscout.androidaps.utils.rx.AapsSchedulers
 import io.reactivex.disposables.CompositeDisposable
 import java.text.DecimalFormat
 import javax.inject.Inject
@@ -32,11 +31,11 @@ class DanaUserOptionsActivity : NoSplashAppCompatActivity() {
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var rxBus: RxBusWrapper
     @Inject lateinit var fabricPrivacy: FabricPrivacy
-    @Inject lateinit var resourceHelper: ResourceHelper
     @Inject lateinit var context: Context
     @Inject lateinit var danaPump: DanaPump
     @Inject lateinit var activePlugin: ActivePluginProvider
     @Inject lateinit var commandQueue: CommandQueueProvider
+    @Inject lateinit var aapsSchedulers: AapsSchedulers
 
     private val disposable = CompositeDisposable()
 
@@ -54,8 +53,8 @@ class DanaUserOptionsActivity : NoSplashAppCompatActivity() {
         super.onResume()
         disposable += rxBus
             .toObservable(EventInitializationChanged::class.java)
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribe({ setData() }) { fabricPrivacy.logException(it) }
+            .observeOn(aapsSchedulers.main)
+            .subscribe({ setData() }, fabricPrivacy::logException)
     }
 
     @Synchronized
