@@ -2,19 +2,28 @@ package info.nightscout.androidaps.plugins.aps.openAPSSMB
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
 import android.text.TextUtils
-import android.view.*
+import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
+import android.view.View
+import android.view.ViewGroup
+import androidx.core.view.MenuProvider
+import androidx.lifecycle.Lifecycle
 import dagger.android.support.DaggerFragment
 import info.nightscout.androidaps.R
 import info.nightscout.androidaps.databinding.OpenapsamaFragmentBinding
 import info.nightscout.androidaps.interfaces.ActivePlugin
+import info.nightscout.androidaps.interfaces.ResourceHelper
 import info.nightscout.androidaps.plugins.aps.events.EventOpenAPSUpdateGui
 import info.nightscout.androidaps.plugins.aps.events.EventOpenAPSUpdateResultGui
 import info.nightscout.androidaps.plugins.bus.RxBus
 import info.nightscout.androidaps.utils.DateUtil
 import info.nightscout.androidaps.utils.FabricPrivacy
 import info.nightscout.androidaps.utils.JSONFormatter
-import info.nightscout.androidaps.interfaces.ResourceHelper
 import info.nightscout.androidaps.utils.rx.AapsSchedulers
 import info.nightscout.shared.logging.AAPSLogger
 import info.nightscout.shared.logging.LTag
@@ -24,7 +33,7 @@ import org.json.JSONArray
 import org.json.JSONException
 import javax.inject.Inject
 
-class OpenAPSSMBFragment : DaggerFragment() {
+class OpenAPSSMBFragment : DaggerFragment(), MenuProvider {
 
     private var disposable: CompositeDisposable = CompositeDisposable()
 
@@ -36,11 +45,12 @@ class OpenAPSSMBFragment : DaggerFragment() {
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var jsonFormatter: JSONFormatter
-    private lateinit var refreshDialog: Runnable
 
-    private val ID_MENU_RUN = 1
+    @Suppress("PrivatePropertyName")
+    private val ID_MENU_RUN = 503
 
     private var _binding: OpenapsamaFragmentBinding? = null
+    private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
 
     // This property is only valid between onCreateView and
     // onDestroyView.
@@ -49,7 +59,7 @@ class OpenAPSSMBFragment : DaggerFragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         OpenapsamaFragmentBinding.inflate(inflater, container, false).also {
             _binding = it
-            setHasOptionsMenu(true)
+            requireActivity().addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
         }.root
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -58,26 +68,22 @@ class OpenAPSSMBFragment : DaggerFragment() {
         with(binding.swipeRefresh) {
             setColorSchemeColors(rh.gac(context, R.attr.colorPrimaryDark), rh.gac(context, R.attr.colorPrimary), rh.gac(context, R.attr.colorSecondary))
             setOnRefreshListener {
-                binding.lastrun.text = rh.gs(info.nightscout.androidaps.R.string.executing)
-                Thread { activePlugin.activeAPS.invoke("OpenAPSSMB swiperefresh", false) }.start()
+                binding.lastrun.text = rh.gs(R.string.executing)
+                handler.post { activePlugin.activeAPS.invoke("OpenAPSSMB swipe refresh", false) }
             }
         }
     }
 
-    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-        super.onCreateOptionsMenu(menu, inflater)
-        if (isResumed) {
-            menu.removeItem(ID_MENU_RUN)
-            menu.add(Menu.FIRST, ID_MENU_RUN, 0, rh.gs(R.string.openapsma_run)).setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-            menu.setGroupDividerEnabled(true)
-        }
+    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
+        menu.add(Menu.FIRST, ID_MENU_RUN, 0, rh.gs(R.string.openapsma_run)).setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.setGroupDividerEnabled(true)
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean =
+    override fun onMenuItemSelected(item: MenuItem): Boolean =
         when (item.itemId) {
             ID_MENU_RUN -> {
                 binding.lastrun.text = rh.gs(R.string.executing)
-                Thread { activePlugin.activeAPS.invoke("OpenAPSSMB menu", false) }.start()
+                handler.post { activePlugin.activeAPS.invoke("OpenAPSSMB menu", false) }
                 true
             }
 
@@ -107,6 +113,7 @@ class OpenAPSSMBFragment : DaggerFragment() {
     override fun onPause() {
         super.onPause()
         disposable.clear()
+        handler.removeCallbacksAndMessages(null)
     }
 
     @Synchronized
