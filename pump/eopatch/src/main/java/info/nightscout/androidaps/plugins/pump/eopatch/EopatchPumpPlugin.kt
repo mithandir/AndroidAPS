@@ -27,6 +27,7 @@ import info.nightscout.interfaces.pump.defs.PumpType
 import info.nightscout.interfaces.queue.CommandQueue
 import info.nightscout.interfaces.queue.CustomCommand
 import info.nightscout.interfaces.ui.UiInteraction
+import info.nightscout.interfaces.utils.Round
 import info.nightscout.interfaces.utils.TimeChangeType
 import info.nightscout.rx.AapsSchedulers
 import info.nightscout.rx.bus.RxBus
@@ -44,6 +45,7 @@ import io.reactivex.rxjava3.subjects.BehaviorSubject
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -66,7 +68,7 @@ class EopatchPumpPlugin @Inject constructor(
     PluginDescription()
         .mainType(PluginType.PUMP)
         .fragmentClass(EopatchOverviewFragment::class.java.name)
-        .pluginIcon(R.drawable.ic_eopatch2_128)
+        .pluginIcon(info.nightscout.core.ui.R.drawable.ic_eopatch2_128)
         .pluginName(R.string.eopatch)
         .shortName(R.string.eopatch_shortname)
         .preferencesId(R.xml.pref_eopatch)
@@ -176,19 +178,25 @@ class EopatchPumpPlugin @Inject constructor(
     override fun setNewBasalProfile(profile: Profile): PumpEnactResult {
         mLastDataTime = System.currentTimeMillis()
         if (patchManager.isActivated) {
-            if (patchManager.patchState.isTempBasalActive || patchManager.patchState.isBolusActive) {
-                return PumpEnactResult(injector)
-            } else {
-                var isSuccess: Boolean? = null
-                val result: BehaviorSubject<Boolean> = BehaviorSubject.create()
-                val disposable = result.hide()
-                    .subscribe {
-                        isSuccess = it
-                    }
+            if (patchManager.patchState.isTempBasalActive) {
+                val cancelResult = cancelTempBasal(true)
+                if (!cancelResult.success) return PumpEnactResult(injector).isTempCancel(true).comment(info.nightscout.core.ui.R.string.canceling_tbr_failed)
+            }
 
-                val nb = preferenceManager.getNormalBasalManager().convertProfileToNormalBasal(profile)
-                mDisposables.add(
-                    patchManager.startBasal(nb)
+            if (patchManager.patchState.isExtBolusActive) {
+                val cancelResult = cancelExtendedBolus()
+                if (!cancelResult.success) return PumpEnactResult(injector).comment(info.nightscout.core.ui.R.string.canceling_eb_failed)
+            }
+            var isSuccess: Boolean? = null
+            val result: BehaviorSubject<Boolean> = BehaviorSubject.create()
+            val disposable = result.hide()
+                .subscribe {
+                    isSuccess = it
+                }
+
+            val nb = preferenceManager.getNormalBasalManager().convertProfileToNormalBasal(profile)
+            mDisposables.add(
+                patchManager.startBasal(nb)
                         .observeOn(aapsSchedulers.main)
                         .subscribe({ response ->
                                        result.onNext(response.isSuccess)
@@ -204,16 +212,15 @@ class EopatchPumpPlugin @Inject constructor(
                 disposable.dispose()
                 aapsLogger.info(LTag.PUMP, "Basal Profile was set: ${isSuccess ?: false}")
                 if (isSuccess == true) {
-                    uiInteraction.addNotificationValidFor(Notification.PROFILE_SET_OK, rh.gs(R.string.profile_set_ok), Notification.INFO, 60)
+                    uiInteraction.addNotificationValidFor(Notification.PROFILE_SET_OK, rh.gs(info.nightscout.core.ui.R.string.profile_set_ok), Notification.INFO, 60)
                     return PumpEnactResult(injector).success(true).enacted(true)
                 } else {
                     return PumpEnactResult(injector)
                 }
-            }
         } else {
             preferenceManager.getNormalBasalManager().setNormalBasal(profile)
             preferenceManager.flushNormalBasalManager()
-            uiInteraction.addNotificationValidFor(Notification.PROFILE_SET_OK, rh.gs(R.string.profile_set_ok), Notification.INFO, 60)
+            uiInteraction.addNotificationValidFor(Notification.PROFILE_SET_OK, rh.gs(info.nightscout.core.ui.R.string.profile_set_ok), Notification.INFO, 60)
             return PumpEnactResult(injector).success(true).enacted(true)
         }
     }
@@ -261,12 +268,8 @@ class EopatchPumpPlugin @Inject constructor(
 
     override fun deliverTreatment(detailedBolusInfo: DetailedBolusInfo): PumpEnactResult {
 
-        if (detailedBolusInfo.insulin == 0.0 && detailedBolusInfo.carbs == 0.0) {
-            // neither carbs nor bolus requested
-            aapsLogger.error("deliverTreatment: Invalid input: neither carbs nor insulin are set in treatment")
-            return PumpEnactResult(injector).success(false).enacted(false).bolusDelivered(0.0).carbsDelivered(0.0)
-                .comment(rh.gs(R.string.invalid_input))
-        } else if (detailedBolusInfo.insulin > 0.0) {
+        val askedInsulin = detailedBolusInfo.insulin
+        if (detailedBolusInfo.insulin > 0.0) {
             var isSuccess = true
             val result = BehaviorSubject.createDefault(true)
             val disposable = result.hide()
@@ -293,7 +296,7 @@ class EopatchPumpPlugin @Inject constructor(
                 if (patchManager.patchConnectionState.isConnected) {
                     val delivering = patchManager.bolusCurrent.nowBolus.injected
                     rxBus.send(EventOverviewBolusProgress.apply {
-                        status = rh.gs(R.string.bolus_delivering, delivering)
+                        status = rh.gs(info.nightscout.core.ui.R.string.bolus_delivering, delivering)
                         percent = min((delivering / detailedBolusInfo.insulin * 100).toInt(), 100)
                         t = tr
                     })
@@ -301,7 +304,7 @@ class EopatchPumpPlugin @Inject constructor(
             } while (!patchManager.bolusCurrent.nowBolus.endTimeSynced && isSuccess)
 
             rxBus.send(EventOverviewBolusProgress.apply {
-                status = rh.gs(R.string.bolus_delivered, detailedBolusInfo.insulin)
+                status = rh.gs(info.nightscout.core.ui.R.string.bolus_delivered_successfully, detailedBolusInfo.insulin)
                 percent = 100
             })
 
@@ -310,17 +313,14 @@ class EopatchPumpPlugin @Inject constructor(
 
             disposable.dispose()
 
-            return if (isSuccess)
-                PumpEnactResult(injector).success(true)/*.enacted(true)*/.carbsDelivered(detailedBolusInfo.carbs).bolusDelivered(detailedBolusInfo.insulin)
+            return if (isSuccess && abs(askedInsulin - detailedBolusInfo.insulin) < pumpDescription.bolusStep)
+                PumpEnactResult(injector).success(true).enacted(true).bolusDelivered(askedInsulin)
             else
-                PumpEnactResult(injector).success(false)/*.enacted(false)*/.carbsDelivered(0.0).bolusDelivered(detailedBolusInfo.insulin)
+                PumpEnactResult(injector).success(false)/*.enacted(false)*/.bolusDelivered(Round.roundTo(detailedBolusInfo.insulin, 0.01))
 
         } else {
-            // no bolus required, carb only treatment
-            patchManager.addBolusToHistory(detailedBolusInfo)
-
-            return PumpEnactResult(injector).success(true).enacted(true).bolusDelivered(0.0)
-                .carbsDelivered(detailedBolusInfo.carbs).comment(rh.gs(R.string.ok))
+            // no bolus required
+            return PumpEnactResult(injector).success(false).enacted(false).bolusDelivered(0.0).comment(rh.gs(info.nightscout.core.ui.R.string.error))
         }
     }
 
@@ -330,7 +330,7 @@ class EopatchPumpPlugin @Inject constructor(
                              .observeOn(aapsSchedulers.main)
                              .subscribe { it ->
                                  rxBus.send(EventOverviewBolusProgress.apply {
-                                     status = rh.gs(R.string.bolus_delivered, (it.injectedBolusAmount * 0.05f))
+                                     status = rh.gs(info.nightscout.core.ui.R.string.bolus_delivered_successfully, (it.injectedBolusAmount * 0.05f))
                                  })
                              }
         )
@@ -421,7 +421,7 @@ class EopatchPumpPlugin @Inject constructor(
             .map { PumpEnactResult(injector).success(true).enacted(true) }
             .onErrorReturnItem(
                 PumpEnactResult(injector).success(false).enacted(false).bolusDelivered(0.0)
-                    .comment(rh.gs(R.string.error))
+                    .comment(rh.gs(info.nightscout.core.ui.R.string.error))
             )
             .blockingGet()
     }
@@ -458,7 +458,7 @@ class EopatchPumpPlugin @Inject constructor(
             .map { PumpEnactResult(injector).success(true).enacted(true).isTempCancel(true) }
             .onErrorReturnItem(
                 PumpEnactResult(injector).success(false).enacted(false)
-                    .comment(rh.gs(R.string.error))
+                    .comment(rh.gs(info.nightscout.core.ui.R.string.error))
             )
             .blockingGet()
     }
@@ -479,7 +479,7 @@ class EopatchPumpPlugin @Inject constructor(
                 .map { PumpEnactResult(injector).success(true).enacted(true).isTempCancel(true) }
                 .onErrorReturnItem(
                     PumpEnactResult(injector).success(false).enacted(false)
-                        .comment(rh.gs(R.string.error))
+                        .comment(rh.gs(info.nightscout.core.ui.R.string.canceling_eb_failed))
                 )
                 .blockingGet()
         } else {

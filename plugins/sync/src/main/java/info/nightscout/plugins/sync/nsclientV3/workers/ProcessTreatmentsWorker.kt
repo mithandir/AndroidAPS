@@ -1,20 +1,18 @@
 package info.nightscout.plugins.sync.nsclientV3.workers
 
 import android.content.Context
-import androidx.work.Worker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import dagger.android.HasAndroidInjector
 import info.nightscout.core.utils.receivers.DataWorkerStorage
+import info.nightscout.core.utils.worker.LoggingWorker
 import info.nightscout.database.impl.AppRepository
 import info.nightscout.interfaces.Config
 import info.nightscout.interfaces.Constants
 import info.nightscout.interfaces.XDripBroadcast
 import info.nightscout.interfaces.logging.UserEntryLogger
+import info.nightscout.interfaces.nsclient.StoreDataForDb
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.plugins.sync.R
-import info.nightscout.interfaces.nsclient.StoreDataForDb
-import info.nightscout.plugins.sync.nsShared.StoreDataForDbImpl
 import info.nightscout.plugins.sync.nsclientV3.extensions.toBolus
 import info.nightscout.plugins.sync.nsclientV3.extensions.toBolusCalculatorResult
 import info.nightscout.plugins.sync.nsclientV3.extensions.toCarbs
@@ -26,8 +24,8 @@ import info.nightscout.plugins.sync.nsclientV3.extensions.toTemporaryBasal
 import info.nightscout.plugins.sync.nsclientV3.extensions.toTemporaryTarget
 import info.nightscout.plugins.sync.nsclientV3.extensions.toTherapyEvent
 import info.nightscout.rx.bus.RxBus
-import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
+import info.nightscout.sdk.interfaces.NSAndroidClient
 import info.nightscout.sdk.localmodel.treatment.NSBolus
 import info.nightscout.sdk.localmodel.treatment.NSBolusWizard
 import info.nightscout.sdk.localmodel.treatment.NSCarbs
@@ -46,10 +44,9 @@ import javax.inject.Inject
 class ProcessTreatmentsWorker(
     context: Context,
     params: WorkerParameters
-) : Worker(context, params) {
+) : LoggingWorker(context, params) {
 
     @Inject lateinit var dataWorkerStorage: DataWorkerStorage
-    @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var config: Config
     @Inject lateinit var sp: SP
     @Inject lateinit var dateUtil: DateUtil
@@ -58,35 +55,30 @@ class ProcessTreatmentsWorker(
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var uel: UserEntryLogger
     @Inject lateinit var xDripBroadcast: XDripBroadcast
-    @Inject lateinit var storeDataForDb: StoreDataForDbImpl
+    @Inject lateinit var storeDataForDb: StoreDataForDb
 
-    override fun doWork(): Result {
+    override fun doWorkAndLog(): Result {
         @Suppress("UNCHECKED_CAST")
-        val treatments = dataWorkerStorage.pickupObject(inputData.getLong(DataWorkerStorage.STORE_KEY, -1)) as List<NSTreatment>?
+        val treatments = dataWorkerStorage.pickupObject(inputData.getLong(DataWorkerStorage.STORE_KEY, -1)) as NSAndroidClient.ReadResponse<List<NSTreatment>>?
             ?: return Result.failure(workDataOf("Error" to "missing input data"))
 
+        var latestDateInReceivedData: Long = 0
         val ret = Result.success()
-        var latestDateInReceivedData = 0L
-
-        for (treatment in treatments) {
+        for (treatment in treatments.values) {
             aapsLogger.debug(LTag.DATABASE, "Received NS treatment: $treatment")
-
-            //Find latest date in treatment
-            val mills = treatment.date
-            if (mills != 0L && mills < dateUtil.now())
-                if (mills > latestDateInReceivedData) latestDateInReceivedData = mills
+            if (treatment.date > latestDateInReceivedData) latestDateInReceivedData = treatment.date
 
             when (treatment) {
                 is NSBolus                  ->
-                    if (sp.getBoolean(R.string.key_ns_receive_insulin, false) || config.NSCLIENT)
+                    if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_receive_insulin, false) || config.NSCLIENT)
                         storeDataForDb.boluses.add(treatment.toBolus())
 
                 is NSCarbs                  ->
-                    if (sp.getBoolean(R.string.key_ns_receive_carbs, false) || config.NSCLIENT)
+                    if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_receive_carbs, false) || config.NSCLIENT)
                         storeDataForDb.carbs.add(treatment.toCarbs())
 
                 is NSTemporaryTarget        ->
-                    if (sp.getBoolean(R.string.key_ns_receive_temp_target, false) || config.NSCLIENT) {
+                    if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_receive_temp_target, false) || config.NSCLIENT) {
                         if (treatment.duration > 0L) {
                             // not ending event
                             if (treatment.targetBottomAsMgdl() < Constants.MIN_TT_MGDL
@@ -107,14 +99,14 @@ class ProcessTreatmentsWorker(
                         storeDataForDb.temporaryBasals.add(treatment.toTemporaryBasal())
 
                 is NSEffectiveProfileSwitch ->
-                    if (sp.getBoolean(R.string.key_ns_receive_profile_switch, false) || config.NSCLIENT) {
+                    if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_receive_profile_switch, false) || config.NSCLIENT) {
                         treatment.toEffectiveProfileSwitch(dateUtil)?.let { effectiveProfileSwitch ->
                             storeDataForDb.effectiveProfileSwitches.add(effectiveProfileSwitch)
                         }
                     }
 
                 is NSProfileSwitch          ->
-                    if (sp.getBoolean(R.string.key_ns_receive_profile_switch, false) || config.NSCLIENT) {
+                    if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_receive_profile_switch, false) || config.NSCLIENT) {
                         treatment.toProfileSwitch(activePlugin, dateUtil)?.let { profileSwitch ->
                             storeDataForDb.profileSwitches.add(profileSwitch)
                         }
@@ -126,13 +118,13 @@ class ProcessTreatmentsWorker(
                     }
 
                 is NSTherapyEvent           ->
-                    if (sp.getBoolean(R.string.key_ns_receive_therapy_events, false) || config.NSCLIENT)
+                    if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_receive_therapy_events, false) || config.NSCLIENT)
                         treatment.toTherapyEvent().let { therapyEvent ->
                             storeDataForDb.therapyEvents.add(therapyEvent)
                         }
 
                 is NSOfflineEvent           ->
-                    if (sp.getBoolean(R.string.key_ns_receive_offline_event, false) && config.isEngineeringMode() || config.NSCLIENT)
+                    if (sp.getBoolean(info.nightscout.core.utils.R.string.key_ns_receive_offline_event, false) && config.isEngineeringMode() || config.NSCLIENT)
                         treatment.toOfflineEvent().let { offlineEvent ->
                             storeDataForDb.offlineEvents.add(offlineEvent)
                         }
@@ -147,9 +139,5 @@ class ProcessTreatmentsWorker(
         activePlugin.activeNsClient?.updateLatestTreatmentReceivedIfNewer(latestDateInReceivedData)
 //        xDripBroadcast.sendTreatments(treatments)
         return ret
-    }
-
-    init {
-        (context.applicationContext as HasAndroidInjector).androidInjector().inject(this)
     }
 }

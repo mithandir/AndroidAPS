@@ -10,9 +10,9 @@ import android.view.WindowManager
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import dagger.android.support.DaggerDialogFragment
-import info.nightscout.androidaps.utils.extensions.selectedItemPosition
-import info.nightscout.androidaps.utils.extensions.setEnableForChildren
-import info.nightscout.androidaps.utils.extensions.setSelection
+import info.nightscout.core.ui.extensions.selectedItemPosition
+import info.nightscout.core.ui.extensions.setEnableForChildren
+import info.nightscout.core.ui.extensions.setSelection
 import info.nightscout.core.wizard.QuickWizard
 import info.nightscout.core.wizard.QuickWizardEntry
 import info.nightscout.plugins.R
@@ -61,7 +61,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
             position = bundle.getInt("position", -1)
         }
         val entry = if (position == -1) quickWizard.newEmptyItem() else quickWizard[position]
-        if (sp.getBoolean(R.string.key_wear_control, false)) {
+        if (sp.getBoolean(info.nightscout.core.utils.R.string.key_wear_control, false)) {
             binding.deviceLabel.visibility = View.VISIBLE
             binding.device.visibility = View.VISIBLE
         } else {

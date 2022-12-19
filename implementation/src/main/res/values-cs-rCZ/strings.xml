@@ -3,8 +3,6 @@
     <string name="xdrip_not_installed">xDrip+ není nainstalován</string>
     <string name="calibration_sent">Kalibrace odeslána do xDripu+</string>
     <string name="bg_label">Gly</string>
-    <string name="time_to_eat">Čas k jídlu</string>
-    <string name="time_to_bolus">Čas na bolus!\nSpusťte Bolusovou kalkulačku a proveďte výpočet znovu.</string>
     <string name="executing_right_now">Příkaz je právě prováděn</string>
     <string name="basal_value_below_minimum">Hodnota bazálu pod povoleným minimem. Nenastaveno!</string>
     <string name="permission">Povolení</string>
@@ -24,4 +22,5 @@
     <string name="detailed_14_days">Podrobně 14 dní</string>
     <string name="day_tir">Denní TIR</string>
     <string name="night_tir">Noční TIR</string>
+    <string name="carbs_short" comment="max 6 characters">Sach</string>
 </resources>

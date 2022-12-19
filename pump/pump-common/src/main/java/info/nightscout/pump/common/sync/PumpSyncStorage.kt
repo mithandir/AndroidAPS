@@ -50,8 +50,11 @@ class PumpSyncStorage @Inject constructor(
 
             if (jsonData.isNotBlank()) {
                 @Suppress("UNCHECKED_CAST")
-                pumpSyncStorageBolus = xstream.fromXML(jsonData, MutableList::class.java) as
-                    MutableList<PumpDbEntryBolus>
+                pumpSyncStorageBolus = try {
+                    xstream.fromXML(jsonData, MutableList::class.java) as MutableList<PumpDbEntryBolus>
+                } catch (e: Exception) {
+                    mutableListOf()
+                }
 
                 aapsLogger.debug(LTag.PUMP, "Loading Pump Sync Storage Bolus: boluses=${pumpSyncStorageBolus.size}")
                 aapsLogger.debug(LTag.PUMP, "DD: PumpSyncStorageBolus=$pumpSyncStorageBolus")
@@ -63,8 +66,11 @@ class PumpSyncStorage @Inject constructor(
 
             if (jsonData.isNotBlank()) {
                 @Suppress("UNCHECKED_CAST")
-                pumpSyncStorageTBR = xstream.fromXML(jsonData, MutableList::class.java) as
-                    MutableList<PumpDbEntryTBR>
+                pumpSyncStorageTBR = try {
+                    xstream.fromXML(jsonData, MutableList::class.java) as MutableList<PumpDbEntryTBR>
+                } catch (e: Exception) {
+                    mutableListOf()
+                }
 
                 aapsLogger.debug(LTag.PUMP, "Loading Pump Sync Storage: tbrs=${pumpSyncStorageTBR.size}.")
                 aapsLogger.debug(LTag.PUMP, "DD: PumpSyncStorageTBR=$pumpSyncStorageTBR")
@@ -110,7 +116,7 @@ class PumpSyncStorage @Inject constructor(
         return pumpSyncStorageTBR
     }
 
-    fun addBolusWithTempId(detailedBolusInfo: DetailedBolusInfo, writeToInternalHistory: Boolean, creator: info.nightscout.pump.common.sync.PumpSyncEntriesCreator): Boolean {
+    fun addBolusWithTempId(detailedBolusInfo: DetailedBolusInfo, writeToInternalHistory: Boolean, creator: PumpSyncEntriesCreator): Boolean {
         val temporaryId = creator.generateTempId(detailedBolusInfo.timestamp)
         val result = pumpSync.addBolusWithTempId(
             detailedBolusInfo.timestamp,
@@ -157,7 +163,7 @@ class PumpSyncStorage @Inject constructor(
             "carbs=${carbsDto.carbs}, pumpSerial=${carbsDto.serialNumber}] - Result: $result")
     }
 
-    fun addTemporaryBasalRateWithTempId(temporaryBasal: PumpDbEntryTBR, writeToInternalHistory: Boolean, creator: info.nightscout.pump.common.sync.PumpSyncEntriesCreator): Boolean {
+    fun addTemporaryBasalRateWithTempId(temporaryBasal: PumpDbEntryTBR, writeToInternalHistory: Boolean, creator: PumpSyncEntriesCreator): Boolean {
         val timeNow: Long = System.currentTimeMillis()
         val temporaryId = creator.generateTempId(timeNow)
 

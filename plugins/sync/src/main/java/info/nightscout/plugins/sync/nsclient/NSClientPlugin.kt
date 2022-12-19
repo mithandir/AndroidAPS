@@ -12,6 +12,7 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
 import dagger.android.HasAndroidInjector
+import info.nightscout.core.extensions.toJson
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.interfaces.Config
 import info.nightscout.interfaces.Constants
@@ -20,6 +21,7 @@ import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.interfaces.plugin.PluginBase
 import info.nightscout.interfaces.plugin.PluginDescription
 import info.nightscout.interfaces.plugin.PluginType
+import info.nightscout.interfaces.profile.ProfileFunction
 import info.nightscout.interfaces.source.DoingOwnUploadSource
 import info.nightscout.interfaces.sync.DataSyncSelector
 import info.nightscout.interfaces.sync.NsClient
@@ -32,6 +34,7 @@ import info.nightscout.plugins.sync.nsShared.events.EventNSClientResend
 import info.nightscout.plugins.sync.nsShared.events.EventNSClientStatus
 import info.nightscout.plugins.sync.nsShared.events.EventNSClientUpdateGUI
 import info.nightscout.plugins.sync.nsclient.data.AlarmAck
+import info.nightscout.plugins.sync.nsclient.extensions.toJson
 import info.nightscout.plugins.sync.nsclient.services.NSClientService
 import info.nightscout.rx.AapsSchedulers
 import info.nightscout.rx.bus.RxBus
@@ -45,6 +48,7 @@ import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.sharedPreferences.SP
+import info.nightscout.shared.utils.DateUtil
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import javax.inject.Inject
@@ -64,12 +68,14 @@ class NSClientPlugin @Inject constructor(
     private val config: Config,
     private val dataSyncSelector: DataSyncSelector,
     private val uiInteraction: UiInteraction,
-    private val activePlugin: ActivePlugin
+    private val activePlugin: ActivePlugin,
+    private val dateUtil: DateUtil,
+    private val profileFunction: ProfileFunction
 ) : NsClient, Sync, PluginBase(
     PluginDescription()
         .mainType(PluginType.SYNC)
         .fragmentClass(NSClientFragment::class.java.name)
-        .pluginIcon(R.drawable.ic_nightscout_syncs)
+        .pluginIcon(info.nightscout.core.ui.R.drawable.ic_nightscout_syncs)
         .pluginName(R.string.ns_client)
         .shortName(R.string.ns_client_short_name)
         .preferencesId(R.xml.pref_ns_client)
@@ -81,7 +87,7 @@ class NSClientPlugin @Inject constructor(
     private val handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
     private val listLog: MutableList<EventNSClientNewLog> = ArrayList()
     override var status = ""
-    override var nsClientService: NSClientService? = null
+    var nsClientService: NSClientService? = null
     val isAllowed: Boolean
         get() = nsClientReceiverDelegate.allowed
     val blockingReason: String
@@ -140,12 +146,12 @@ class NSClientPlugin @Inject constructor(
         if (config.NSCLIENT) {
             preferenceFragment.findPreference<PreferenceScreen>(rh.gs(R.string.ns_sync_options))?.isVisible = false
 
-            preferenceFragment.findPreference<SwitchPreference>(rh.gs(R.string.key_ns_create_announcements_from_errors))?.isVisible = false
-            preferenceFragment.findPreference<SwitchPreference>(rh.gs(R.string.key_ns_create_announcements_from_carbs_req))?.isVisible = false
+            preferenceFragment.findPreference<SwitchPreference>(rh.gs(info.nightscout.core.utils.R.string.key_ns_create_announcements_from_errors))?.isVisible = false
+            preferenceFragment.findPreference<SwitchPreference>(rh.gs(info.nightscout.core.utils.R.string.key_ns_create_announcements_from_carbs_req))?.isVisible = false
         }
         preferenceFragment.findPreference<SwitchPreference>(rh.gs(R.string.key_ns_receive_tbr_eb))?.isVisible = config.isEngineeringMode()
         if (activePlugin.activeBgSource is DoingOwnUploadSource) {
-            preferenceFragment.findPreference<SwitchPreference>(rh.gs(R.string.key_do_ns_upload))?.isVisible = false
+            preferenceFragment.findPreference<SwitchPreference>(rh.gs(info.nightscout.core.utils.R.string.key_do_ns_upload))?.isVisible = false
         }
     }
 
@@ -191,7 +197,7 @@ class NSClientPlugin @Inject constructor(
             }
             return fromHtml(newTextLog.toString())
         } catch (e: OutOfMemoryError) {
-            uiInteraction.showToastAndNotification(context, "Out of memory!\nStop using this phone !!!", R.raw.error)
+            uiInteraction.showToastAndNotification(context, "Out of memory!\nStop using this phone !!!", info.nightscout.core.ui.R.raw.error)
         }
         return fromHtml("")
     }
@@ -234,5 +240,62 @@ class NSClientPlugin @Inject constructor(
 
     override fun resetToFullSync() {
         dataSyncSelector.resetToNextFullSync()
+    }
+
+    override fun dbAdd(collection: String, dataPair: DataSyncSelector.DataPair, progress: String) {
+        when (dataPair) {
+            is DataSyncSelector.PairBolus                  -> dataPair.value.toJson(true, dateUtil)
+            is DataSyncSelector.PairCarbs                  -> dataPair.value.toJson(true, dateUtil)
+            is DataSyncSelector.PairBolusCalculatorResult  -> dataPair.value.toJson(true, dateUtil, profileFunction)
+            is DataSyncSelector.PairTemporaryTarget        -> dataPair.value.toJson(true, profileFunction.getUnits(), dateUtil)
+            is DataSyncSelector.PairFood                   -> dataPair.value.toJson(true)
+            is DataSyncSelector.PairGlucoseValue           -> dataPair.value.toJson(true, dateUtil)
+            is DataSyncSelector.PairTherapyEvent           -> dataPair.value.toJson(true, dateUtil)
+            is DataSyncSelector.PairDeviceStatus           -> dataPair.value.toJson(dateUtil)
+            is DataSyncSelector.PairTemporaryBasal         -> dataPair.value.toJson(true, profileFunction.getProfile(dataPair.value.timestamp), dateUtil)
+            is DataSyncSelector.PairExtendedBolus          -> dataPair.value.toJson(true, profileFunction.getProfile(dataPair.value.timestamp), dateUtil)
+            is DataSyncSelector.PairProfileSwitch          -> dataPair.value.toJson(true, dateUtil)
+            is DataSyncSelector.PairEffectiveProfileSwitch -> dataPair.value.toJson(true, dateUtil)
+            is DataSyncSelector.PairOfflineEvent           -> dataPair.value.toJson(true, dateUtil)
+            is DataSyncSelector.PairProfileStore           -> dataPair.value
+            else                                           -> null
+        }?.let { data ->
+            nsClientService?.dbAdd(collection, data, dataPair, progress)
+        }
+    }
+
+    override fun dbUpdate(collection: String, dataPair: DataSyncSelector.DataPair, progress: String) {
+        val id = when (dataPair) {
+            is DataSyncSelector.PairBolus                  -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairCarbs                  -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairBolusCalculatorResult  -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairTemporaryTarget        -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairFood                   -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairGlucoseValue           -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairTherapyEvent           -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairTemporaryBasal         -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairExtendedBolus          -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairProfileSwitch          -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairEffectiveProfileSwitch -> dataPair.value.interfaceIDs.nightscoutId
+            is DataSyncSelector.PairOfflineEvent           -> dataPair.value.interfaceIDs.nightscoutId
+            else                                           -> throw IllegalStateException()
+        }
+        when (dataPair) {
+            is DataSyncSelector.PairBolus                  -> dataPair.value.toJson(false, dateUtil)
+            is DataSyncSelector.PairCarbs                  -> dataPair.value.toJson(false, dateUtil)
+            is DataSyncSelector.PairBolusCalculatorResult  -> dataPair.value.toJson(false, dateUtil, profileFunction)
+            is DataSyncSelector.PairTemporaryTarget        -> dataPair.value.toJson(false, profileFunction.getUnits(), dateUtil)
+            is DataSyncSelector.PairFood                   -> dataPair.value.toJson(false)
+            is DataSyncSelector.PairGlucoseValue           -> dataPair.value.toJson(false, dateUtil)
+            is DataSyncSelector.PairTherapyEvent           -> dataPair.value.toJson(false, dateUtil)
+            is DataSyncSelector.PairTemporaryBasal         -> dataPair.value.toJson(false, profileFunction.getProfile(dataPair.value.timestamp), dateUtil)
+            is DataSyncSelector.PairExtendedBolus          -> dataPair.value.toJson(false, profileFunction.getProfile(dataPair.value.timestamp), dateUtil)
+            is DataSyncSelector.PairProfileSwitch          -> dataPair.value.toJson(false, dateUtil)
+            is DataSyncSelector.PairEffectiveProfileSwitch -> dataPair.value.toJson(false, dateUtil)
+            is DataSyncSelector.PairOfflineEvent           -> dataPair.value.toJson(false, dateUtil)
+            else                                           -> null
+        }?.let { data ->
+            nsClientService?.dbUpdate(collection, id, data, dataPair, progress)
+        }
     }
 }
