@@ -72,7 +72,7 @@ class RunningConfigurationImpl @Inject constructor(
         assert(config.NSCLIENT)
 
         configuration.version?.let {
-            rxBus.send(EventNSClientNewLog("VERSION", "Received AndroidAPS version  $it"))
+            rxBus.send(EventNSClientNewLog("VERSION", "Received AAPS version  $it"))
             if (config.VERSION_NAME.startsWith(it).not())
                 uiInteraction.addNotification(Notification.NSCLIENT_VERSION_DOES_NOT_MATCH, rh.gs(R.string.nsclient_version_does_not_match), Notification.NORMAL)
         }
@@ -105,8 +105,8 @@ class RunningConfigurationImpl @Inject constructor(
         }
 
         configuration.pump?.let {
-            if (sp.getString(R.string.key_virtualpump_type, "fake") != it) {
-                sp.putString(R.string.key_virtualpump_type, it)
+            if (sp.getString(info.nightscout.core.utils.R.string.key_virtualpump_type, "fake") != it) {
+                sp.putString(info.nightscout.core.utils.R.string.key_virtualpump_type, it)
                 activePlugin.activePump.pumpDescription.fillFor(PumpType.getByDescription(it))
                 pumpSync.connectNewPump(endRunning = false) // do not end running TBRs, we call this only to accept data properly
                 aapsLogger.debug(LTag.CORE, "Changing pump type to $it")
