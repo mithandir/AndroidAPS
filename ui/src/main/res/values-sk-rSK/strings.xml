@@ -17,6 +17,7 @@
     <!--     Activities-->
     <string name="activity_monitor">Monitor aktivity</string>
     <string name="do_you_want_reset_stats">Chcete resetovať štatistiky aktivity?</string>
+    <string name="do_you_want_reset_tdd_stats">Chcete resetovať štatistiky CDD?</string>
     <string name="statistics">Štatistika</string>
     <string name="calculation_in_progress">Prebieha výpočet</string>
     <string name="invalid_age">Neplatný záznam veku</string>
@@ -126,4 +127,5 @@
     <string name="basal_rate">Bazál</string>
     <!--    BolusProgressDialog-->
     <string name="stop_pressed">STLAČENÝ STOP</string>
+    <!--QuickWizard-->
 </resources>

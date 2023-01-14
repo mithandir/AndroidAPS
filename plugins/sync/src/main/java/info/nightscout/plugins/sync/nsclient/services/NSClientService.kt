@@ -41,7 +41,7 @@ import info.nightscout.plugins.sync.nsclient.data.AlarmAck
 import info.nightscout.plugins.sync.nsclient.data.NSDeviceStatusHandler
 import info.nightscout.plugins.sync.nsclient.workers.NSClientAddUpdateWorker
 import info.nightscout.plugins.sync.nsclient.workers.NSClientMbgWorker
-import info.nightscout.plugins.sync.nsclientV3.NSClientV3Plugin
+import info.nightscout.plugins.sync.nsclientV3.workers.ProcessFoodWorker
 import info.nightscout.rx.AapsSchedulers
 import info.nightscout.rx.bus.RxBus
 import info.nightscout.rx.events.EventAppExit
@@ -52,7 +52,7 @@ import info.nightscout.rx.events.EventNSClientRestart
 import info.nightscout.rx.events.EventPreferenceChange
 import info.nightscout.rx.logging.AAPSLogger
 import info.nightscout.rx.logging.LTag
-import info.nightscout.sdk.remotemodel.RemoteDeviceStatus
+import info.nightscout.sdk.localmodel.devicestatus.NSDeviceStatus
 import info.nightscout.shared.interfaces.ResourceHelper
 import info.nightscout.shared.sharedPreferences.SP
 import info.nightscout.shared.utils.DateUtil
@@ -510,7 +510,7 @@ class NSClientService : DaggerService() {
                                 }
                             }
 
-                            val devicestatuses = gson.fromJson(data.getString("devicestatus"), Array<RemoteDeviceStatus>::class.java)
+                            val devicestatuses = gson.fromJson(data.getString("devicestatus"), Array<NSDeviceStatus>::class.java)
                             if (devicestatuses.isNotEmpty()) {
                                 rxBus.send(EventNSClientNewLog("DATA", "received " + devicestatuses.size + " device statuses"))
                                 nsDeviceStatusHandler.handleNewData(devicestatuses)
@@ -522,11 +522,14 @@ class NSClientService : DaggerService() {
                     if (data.has("food")) {
                         val foods = data.getJSONArray("food")
                         if (foods.length() > 0) rxBus.send(EventNSClientNewLog("DATA", "received " + foods.length() + " foods"))
-                        dataWorkerStorage.enqueue(
-                            OneTimeWorkRequest.Builder(workerClasses.foodWorker)
-                                .setInputData(dataWorkerStorage.storeInputData(foods))
-                                .build()
-                        )
+                        dataWorkerStorage
+                            .beginUniqueWork(
+                                "ProcessFoods",
+                                OneTimeWorkRequest.Builder(ProcessFoodWorker::class.java)
+                                    .setInputData(dataWorkerStorage.storeInputData(foods))
+                                    .build()
+                            ).then(OneTimeWorkRequest.Builder(StoreDataForDbImpl.StoreFoodWorker::class.java).build())
+                            .enqueue()
                     }
                     if (data.has("mbgs")) {
                         val mbgArray = data.getJSONArray("mbgs")
@@ -550,7 +553,7 @@ class NSClientService : DaggerService() {
                             sp.putBoolean(info.nightscout.core.utils.R.string.key_objectives_bg_is_available_in_ns, true)
                             dataWorkerStorage
                                 .beginUniqueWork(
-                                    NSClientV3Plugin.JOB_NAME,
+                                    "ProcessBg",
                                     OneTimeWorkRequest.Builder(workerClasses.nsClientSourceWorker)
                                         .setInputData(dataWorkerStorage.storeInputData(sgvs))
                                         .build()

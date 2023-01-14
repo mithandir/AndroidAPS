@@ -5,13 +5,13 @@ import info.nightscout.core.extensions.getCustomizedName
 import info.nightscout.core.extensions.pureProfileFromJson
 import info.nightscout.core.profile.ProfileSealed
 import info.nightscout.database.entities.ProfileSwitch
-import info.nightscout.database.entities.TherapyEvent
 import info.nightscout.database.entities.embedments.InterfaceIDs
 import info.nightscout.interfaces.plugin.ActivePlugin
 import info.nightscout.sdk.localmodel.treatment.EventType
 import info.nightscout.sdk.localmodel.treatment.NSProfileSwitch
 import info.nightscout.shared.utils.DateUtil
 import info.nightscout.shared.utils.T
+import java.security.InvalidParameterException
 
 fun NSProfileSwitch.toProfileSwitch(activePlugin: ActivePlugin, dateUtil: DateUtil): ProfileSwitch? {
     val pureProfile =
@@ -22,8 +22,8 @@ fun NSProfileSwitch.toProfileSwitch(activePlugin: ActivePlugin, dateUtil: DateUt
 
     return ProfileSwitch(
         isValid = isValid,
-        timestamp = date,
-        utcOffset = utcOffset,
+        timestamp = date ?: throw InvalidParameterException(),
+        utcOffset = T.mins(utcOffset ?: 0L).msecs(),
         basalBlocks = profileSealed.basalBlocks,
         isfBlocks = profileSealed.isfBlocks,
         icBlocks = profileSealed.icBlocks,
@@ -41,23 +41,22 @@ fun NSProfileSwitch.toProfileSwitch(activePlugin: ActivePlugin, dateUtil: DateUt
 fun ProfileSwitch.toNSProfileSwitch(dateUtil: DateUtil): NSProfileSwitch {
     val unmodifiedCustomizedName = getCustomizedName()
     // ProfileSealed.PS doesn't provide unmodified json -> reset it
-    val unmodifiedTimeshift = timeshift
-    val unmodifiedPercentage = percentage
-    timeshift = 0
-    percentage = 100
+    val notCustomized = this.copy()
+    notCustomized.timeshift = 0
+    notCustomized.percentage = 100
 
     return NSProfileSwitch(
-        eventType = EventType.fromString(TherapyEvent.Type.PROFILE_SWITCH.text),
+        eventType = EventType.PROFILE_SWITCH,
         isValid = isValid,
         date = timestamp,
-        utcOffset = utcOffset,
-        timeShift = unmodifiedTimeshift,
-        percentage = unmodifiedPercentage,
+        utcOffset = T.msecs(utcOffset).mins(),
+        timeShift = timeshift,
+        percentage = percentage,
         duration = T.mins(duration).msecs(),
         profile = unmodifiedCustomizedName,
         originalProfileName = profileName,
         originalDuration = duration,
-        profileJson = ProfileSealed.PS(this).toPureNsJson(dateUtil),
+        profileJson = ProfileSealed.PS(notCustomized).toPureNsJson(dateUtil),
         identifier = interfaceIDs.nightscoutId,
         pumpId = interfaceIDs.pumpId,
         pumpType = interfaceIDs.pumpType?.name,

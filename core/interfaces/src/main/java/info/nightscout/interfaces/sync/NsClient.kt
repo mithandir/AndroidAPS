@@ -16,7 +16,7 @@ interface NsClient : Sync {
     fun textLog(): Spanned
     fun clearLog()
 
-    enum class Collection { ENTRIES, TREATMENTS}
+    enum class Collection { ENTRIES, TREATMENTS, FOODS }
     /**
      * NSC v3 does first load of all data
      * next loads are using srvModified property for sync
@@ -46,6 +46,6 @@ interface NsClient : Sync {
 
     fun resetToFullSync()
 
-    fun dbAdd(collection: String, dataPair: DataSyncSelector.DataPair, progress: String)
-    fun dbUpdate(collection: String, dataPair: DataSyncSelector.DataPair, progress: String)
+    fun nsAdd(collection: String, dataPair: DataSyncSelector.DataPair, progress: String)
+    fun nsUpdate(collection: String, dataPair: DataSyncSelector.DataPair, progress: String)
 }

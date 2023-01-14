@@ -242,15 +242,9 @@
     <string name="a11y_bg_outdated">outdated</string>
     <string name="set_basal_question">Accept new temp basal:</string>
     <string name="overview_cgm">CGM</string>
-    <string name="quickwizard">QuickWizard</string>
-    <string name="a11y_only_on_watch">only on watch</string>
-    <string name="a11y_only_on_phone">only on phone</string>
     <string name="overview">Overview</string>
     <string name="overview_shortname">HOME</string>
     <string name="description_overview">Displays the current state of your loop and buttons for most common actions</string>
-    <string name="overview_editquickwizard_usecob">COB calculation</string>
-    <string name="overview_editquickwizard_usetemptarget">Temporary target calculation</string>
-    <string name="overview_editquickwizard_usepercentage">Percentage calculation</string>
     <string name="overview_buttons_selection">Buttons</string>
     <string name="show_calibration_button_summary">Sends a calibration to xDrip+ or open BYODA calibration dialog</string>
     <string name="show_cgm_button_summary">Opens xDrip+ or BYODA, back buttons returns to AAPS</string>
@@ -264,25 +258,6 @@
     <string name="uploader">Uploader</string>
     <string name="data_status">BG data status</string>
     <string name="quickwizard_settings">QuickWizard settings</string>
-    <string name="overview_edit_quickwizard_button_text">Button text:</string>
-    <string name="overview_edit_quickwizard_carbs">Carbs:</string>
-    <string name="overview_edit_quickwizard_valid">Valid:</string>
-    <string name="overview_edit_quickwizard_list_activity_add">Add</string>
-    <string name="overview_quickwizard_item_edit_button">Edit</string>
-    <string name="overview_edit_quickwizard_show_on_device">Show entry on device:</string>
-    <string name="overview_edit_quickwizard_use_bg">BG calculation</string>
-    <string name="overview_edit_quickwizard_use_bolus_iob">Bolus IOB calculation</string>
-    <string name="overview_edit_quickwizard_use_basal_iob">Basal IOB calculation</string>
-    <string name="overview_edit_quickwizard_use_trend">Trend calculation</string>
-    <string name="overview_edit_quickwizard_use_superbolus">Superbolus calculation</string>
-    <string name="overview_edit_quickwizard_percentage">Percentage</string>
-    <string name="device_all">All</string>
-    <string name="device_phone">Phone</string>
-    <string name="device_watch">Watch</string>
-    <string name="positive_only">Positive only</string>
-    <string name="negative_only">Negative only</string>
-    <string name="app_default">Application default</string>
-    <string name="a11y_drag_and_drop_handle">drag and drop handle</string>
     <string name="keep_screen_on_title">Keep screen on</string>
     <string name="keep_screen_on_summary">Prevent Android to turn screen off. It will consume lot of energy when not plugged to power outlet.</string>
     <string name="treatments">Treatments</string>
@@ -402,5 +377,32 @@
     <string name="ongoingnotificaction" translatable="false">Ongoing Notification</string>
     <string name="description_persistent_notification">Shows an ongoing notification with a short overview of what your loop is doing</string>
     <string name="old_data">OLD DATA</string>
+    <string name="pump_fetching_data">trying to fetch data from pump.</string>
+    <string name="pump_old_data">TDD: Still old data! Cannot load from pump.</string>
+    <string name="grams_short">g</string>
+    <string name="hour_short">h</string>
+    <string name="no_active_profile">No active profile switch!</string>
+    <string name="profile_message">Profile:\n\nTimeshift: %1$\nPercentage: %2$d%\"</string>
+    <string name="key_wear_predictions" translatable="false">wear_predictions</string>
+    <string name="tdd_line">%1$.2fU %1$.0f%</string>
+    <string name="no_profile">No profile loaded</string>
+    <string name="aps_only">Only apply in APS mode!</string>
+    <string name="last_aps_result_na">Last result not available!</string>
+    <string name="loop_status_closed">CLOSED LOOP</string>
+    <string name="loop_status_open">OPEN LOOP</string>
+    <string name="loop_status_disabled">LOOP DISABLED</string>
+    <string name="aps">APS</string>
+    <string name="last_run">Last run</string>
+    <string name="last_enact">Last Enact</string>
+    <string name="today">Today</string>
+    <string name="weighted">weighted</string>
+    <string name="target_only_aps_mode">Targets only apply in APS mode!</string>
+    <string name="no_history">No history data!</string>    
+    <string name="units_short">U</string>
+    <string name="temp_target">Temp Target</string>
+    <string name="until">until</string>
+    <string name="default_range">DEFAULT RANGE</string>
+    <string name="target">target</string>
+    <string name="rate_duration">Rate: %1$.2fU/h (%2$.2f%) \nDuration %3$d% min</string>    
 
 </resources>
