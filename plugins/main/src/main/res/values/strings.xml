@@ -278,6 +278,7 @@
     <string name="short_tabtitles">Shorten tab titles</string>
     <string name="overview_show_notes_field_in_dialogs_title">Show notes field in treatment dialogs</string>
     <string name="deliverpartofboluswizard">Bolus wizard performs calculation but only this part of calculated insulin is delivered. Useful with SMB algorithm.</string>
+    <string name="deliver_part_of_boluswizard_reset_time">Deliver full bolus (100%) if glycemia is older than</string>
     <string name="enable_bolus_advisor">Enable bolus advisor</string>
     <string name="enable_bolus_advisor_summary">Use reminder to start eating later instead of wizard result during high glycemia ("pre-bolus")</string>
     <string name="enablesuperbolus">Enable superbolus in wizard</string>
@@ -372,7 +373,7 @@
     <string name="grams_short">g</string>
     <string name="hour_short">h</string>
     <string name="no_active_profile">No active profile switch!</string>
-    <string name="profile_message">Profile:\n\nTimeshift: %1$\nPercentage: %2$d%%\"</string>
+    <string name="profile_message">Profile:\n\nTimeshift: %1$d\nPercentage: %2$d%%\"</string>
     <string name="key_wear_predictions" translatable="false">wear_predictions</string>
     <string name="tdd_line">%1$.2fU %1$.0f%%</string>
     <string name="no_profile">No profile loaded</string>
