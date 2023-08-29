@@ -5,10 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.text.Editable
+import android.text.TextWatcher
 import android.text.format.DateFormat
 import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
 import androidx.preference.PreferenceFragmentCompat
 import dagger.android.HasAndroidInjector
+import info.nightscout.core.ui.dialogs.OKDialog
 import info.nightscout.core.ui.toast.ToastUtils
 import info.nightscout.core.utils.fabric.FabricPrivacy
 import info.nightscout.interfaces.constraints.Constraint
@@ -38,6 +42,7 @@ import info.nightscout.interfaces.utils.TimeChangeType
 import info.nightscout.pump.medtrum.comm.enums.MedtrumPumpState
 import info.nightscout.pump.medtrum.ui.MedtrumOverviewFragment
 import info.nightscout.pump.medtrum.services.MedtrumService
+import info.nightscout.pump.medtrum.util.MedtrumSnUtil
 import info.nightscout.rx.AapsSchedulers
 import info.nightscout.rx.bus.RxBus
 import info.nightscout.rx.events.EventAppExit
@@ -122,8 +127,76 @@ import kotlin.math.abs
 
     override fun preprocessPreferences(preferenceFragment: PreferenceFragmentCompat) {
         super.preprocessPreferences(preferenceFragment)
-        val serialSetting = preferenceFragment.findPreference(rh.gs(R.string.key_sn_input)) as EditTextPreference?
+        val serialSetting = preferenceFragment.findPreference<EditTextPreference>(rh.gs(R.string.key_sn_input))
         serialSetting?.isEnabled = !isInitialized()
+        serialSetting?.setOnBindEditTextListener { editText ->
+            editText.addTextChangedListener(object : TextWatcher {
+                override fun afterTextChanged(newValue: Editable?) {
+                    val newSN = newValue.toString().toLongOrNull(radix = 16)
+                    val newDeviceType = MedtrumSnUtil().getDeviceTypeFromSerial(newSN ?: 0)
+                    if (newDeviceType == MedtrumSnUtil.INVALID) {
+                        editText.error = rh.gs(R.string.sn_input_invalid)
+                    } else {
+                        editText.error = null
+                    }
+                }
+
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+                    // Nothing to do here
+                }
+
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    // Nothing to do here
+                }
+            })
+        }
+        serialSetting?.setOnPreferenceChangeListener { _, newValue ->
+            if (newValue is String) {
+                val newSN = newValue.toLongOrNull(radix = 16)
+                val newDeviceType = MedtrumSnUtil().getDeviceTypeFromSerial(newSN ?: 0)
+                when {
+                    newDeviceType == MedtrumSnUtil.INVALID                           -> {
+                        preferenceFragment.activity?.let { activity ->
+                            OKDialog.show(activity, rh.gs(R.string.sn_input_title), rh.gs(R.string.sn_input_invalid))
+                        }
+                        false
+                    }
+
+                    medtrumPump.pumpType(newDeviceType) == PumpType.MEDTRUM_UNTESTED -> {
+                        preferenceFragment.activity?.let { activity ->
+                            OKDialog.show(activity, rh.gs(R.string.sn_input_title), rh.gs(R.string.pump_unsupported, newDeviceType))
+                        }
+                        false
+                    }
+
+                    else                                                             -> true
+                }
+            } else {
+                false
+            }
+        }
+
+        val alarmSetting = preferenceFragment.findPreference<ListPreference>(rh.gs(R.string.key_alarm_setting))
+        val allAlarmEntries = preferenceFragment.resources.getStringArray(R.array.alarmSettings)
+        val allAlarmValues = preferenceFragment.resources.getStringArray(R.array.alarmSettingsValues)
+
+        if (allAlarmEntries.size < 8 || allAlarmValues.size < 8) {
+            aapsLogger.error(LTag.PUMP, "Alarm settings array is not complete")
+            return
+        }
+
+        when (medtrumPump.pumpType()) {
+            PumpType.MEDTRUM_NANO -> {
+                alarmSetting?.entries = arrayOf(allAlarmEntries[6], allAlarmEntries[7]) // "Beep", "Silent"
+                alarmSetting?.entryValues = arrayOf(allAlarmValues[6], allAlarmValues[7]) // "6", "7"
+            }
+
+            else                  -> {
+                // Use Nano settings for unknown pumps
+                alarmSetting?.entries = arrayOf(allAlarmEntries[6], allAlarmEntries[7]) // "Beep", "Silent"
+                alarmSetting?.entryValues = arrayOf(allAlarmValues[6], allAlarmValues[7]) // "6", "7"
+            }
+        }
     }
 
     override fun isInitialized(): Boolean {
@@ -271,12 +344,12 @@ import kotlin.math.abs
         val pumpRate = constraintChecker.applyBasalConstraints(Constraint(absoluteRate), profile).value()
         temporaryBasalStorage.add(PumpSync.PumpState.TemporaryBasal(dateUtil.now(), T.mins(durationInMinutes.toLong()).msecs(), pumpRate, true, tbrType, 0L, 0L))
         val connectionOK = medtrumService?.setTempBasal(pumpRate, durationInMinutes) ?: false
-        if (connectionOK
+        return if (connectionOK
             && medtrumPump.tempBasalInProgress
-            && Math.abs(medtrumPump.tempBasalAbsoluteRate - pumpRate) <= 0.05
+            && abs(medtrumPump.tempBasalAbsoluteRate - pumpRate) <= 0.05
         ) {
 
-            return PumpEnactResult(injector).success(true).enacted(true).duration(durationInMinutes).absolute(medtrumPump.tempBasalAbsoluteRate)
+            PumpEnactResult(injector).success(true).enacted(true).duration(durationInMinutes).absolute(medtrumPump.tempBasalAbsoluteRate)
                 .isPercent(false)
                 .isTempCancel(false)
         } else {
@@ -284,7 +357,7 @@ import kotlin.math.abs
                 LTag.PUMP,
                 "setTempBasalAbsolute failed, connectionOK: $connectionOK, tempBasalInProgress: ${medtrumPump.tempBasalInProgress}, tempBasalAbsoluteRate: ${medtrumPump.tempBasalAbsoluteRate}"
             )
-            return PumpEnactResult(injector).success(false).enacted(false).comment("Medtrum setTempBasalAbsolute failed")
+            PumpEnactResult(injector).success(false).enacted(false).comment("Medtrum setTempBasalAbsolute failed")
         }
     }
 
@@ -303,11 +376,11 @@ import kotlin.math.abs
 
         aapsLogger.info(LTag.PUMP, "cancelTempBasal - enforceNew: $enforceNew")
         val connectionOK = medtrumService?.cancelTempBasal() ?: false
-        if (connectionOK && !medtrumPump.tempBasalInProgress) {
-            return PumpEnactResult(injector).success(true).enacted(true).isTempCancel(true)
+        return if (connectionOK && !medtrumPump.tempBasalInProgress) {
+            PumpEnactResult(injector).success(true).enacted(true).isTempCancel(true)
         } else {
             aapsLogger.error(LTag.PUMP, "cancelTempBasal failed, connectionOK: $connectionOK, tempBasalInProgress: ${medtrumPump.tempBasalInProgress}")
-            return PumpEnactResult(injector).success(false).enacted(false).comment("Medtrum cancelTempBasal failed")
+            PumpEnactResult(injector).success(false).enacted(false).comment("Medtrum cancelTempBasal failed")
         }
     }
 
@@ -414,7 +487,7 @@ import kotlin.math.abs
         if (isInitialized()) {
             commandQueue.updateTime(object : Callback() {
                 override fun run() {
-                    if (this.result.success == false) {
+                    if (!this.result.success) {
                         aapsLogger.error(LTag.PUMP, "Medtrum time update failed")
                         // Only notify here on failure (connection may be failed), service will handle success
                         medtrumService?.timeUpdateNotification(false)
