@@ -11,13 +11,12 @@ apply from: "${project.rootDir}/core/main/test_dependencies.gradle"
 apply from: "${project.rootDir}/core/main/jacoco_global.gradle"
 
 android {
-    namespace 'info.nightscout.ui'
+    namespace 'app.aaps.ui'
 }
 
 dependencies {
     implementation project(':core:libraries')
     implementation project(':core:graphview')
-    implementation project(':app-wear-shared:shared')
     implementation project(':database:entities')
     implementation project(':database:impl')
     implementation project(':core:interfaces')
@@ -25,5 +24,5 @@ dependencies {
     implementation project(':core:ui')
     implementation project(':core:utils')
 
-    testImplementation project(':app-wear-shared:shared-tests')
+    testImplementation project(':shared:tests')
 }
