@@ -35,15 +35,16 @@ class VersionCheckerUtilsImpl @Inject constructor(
 
     override fun triggerCheckVersion() {
 
-        if (!sp.contains(R.string.key_last_successful_version_check_timestamp)) {
-            // On a new installation, set it as 30 days old in order to warn that there is a new version.
-            setLastCheckTimestamp(dateUtil.now() - TimeUnit.DAYS.toMillis(30))
-        }
-
-        // If we are good, only check once every day.
-        if (dateUtil.now() > sp.getLong(R.string.key_last_successful_version_check_timestamp, 0) + CHECK_EVERY) {
-            checkVersion()
-        }
+        // if (!sp.contains(R.string.key_last_successful_version_check_timestamp)) {
+        //     // On a new installation, set it as 30 days old in order to warn that there is a new version.
+        //     setLastCheckTimestamp(dateUtil.now() - TimeUnit.DAYS.toMillis(30))
+        // }
+        //
+        // // If we are good, only check once every day.
+        // if (dateUtil.now() > sp.getLong(R.string.key_last_successful_version_check_timestamp, 0) + CHECK_EVERY) {
+        //     checkVersion()
+        // }
+        setLastCheckTimestamp(dateUtil.now())
     }
 
     private fun checkVersion() =

@@ -131,8 +131,8 @@ class MainApp : DaggerApplication() {
             handler.postDelayed(
                 {
                     // check if identification is set
-                    if (config.isDev() && preferences.get(StringKey.MaintenanceIdentification).isBlank())
-                        notificationStore.add(Notification(Notification.IDENTIFICATION_NOT_SET, rh.get().gs(R.string.identification_not_set), Notification.INFO))
+                    // if (config.isDev() && preferences.get(StringKey.MaintenanceIdentification).isBlank())
+                    //     notificationStore.add(Notification(Notification.IDENTIFICATION_NOT_SET, rh.get().gs(R.string.identification_not_set), Notification.INFO))
                     // log version
                     disposable += persistenceLayer.insertVersionChangeIfChanged(config.VERSION_NAME, BuildConfig.VERSION_CODE, gitRemote, commitHash).subscribe()
                     // log app start

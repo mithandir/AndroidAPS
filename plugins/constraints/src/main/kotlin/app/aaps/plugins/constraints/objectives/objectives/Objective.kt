@@ -41,9 +41,9 @@ abstract class Objective(injector: HasAndroidInjector, spName: String, @StringRe
 
     val isCompleted: Boolean
         get() {
-            for (task in tasks) {
-                if (!task.shouldBeIgnored() && !task.isCompleted()) return false
-            }
+            // for (task in tasks) {
+            //     if (!task.shouldBeIgnored() && !task.isCompleted()) return false
+            // }
             return true
         }
 
