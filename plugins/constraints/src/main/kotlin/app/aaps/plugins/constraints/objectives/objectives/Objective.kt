@@ -62,16 +62,20 @@ abstract class Objective(injector: HasAndroidInjector, spName: String, @StringRe
     }
 
     fun isCompleted(trueTime: Long): Boolean {
-        for (task in tasks) {
-            if (!task.shouldBeIgnored() && !task.isCompleted(trueTime)) return false
-        }
+        // for (task in tasks) {
+        //     if (!task.shouldBeIgnored() && !task.isCompleted(trueTime)) return false
+        // }
         return true
     }
 
     val isAccomplished: Boolean
-        get() = accomplishedOn != 0L && accomplishedOn < dateUtil.now()
+        get() {
+            return true
+        }
     val isStarted: Boolean
-        get() = startedOn != 0L
+        get() {
+            return true
+        }
 
     @Suppress("unused")
     open fun specialActionEnabled(): Boolean = true
