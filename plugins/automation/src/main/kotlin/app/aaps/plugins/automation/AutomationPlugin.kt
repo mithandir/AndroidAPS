@@ -28,6 +28,7 @@ import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.StringKey
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
@@ -52,6 +53,7 @@ import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerConnector
+import app.aaps.plugins.automation.triggers.TriggerDay
 import app.aaps.plugins.automation.triggers.TriggerDelta
 import app.aaps.plugins.automation.triggers.TriggerHeartRate
 import app.aaps.plugins.automation.triggers.TriggerIob
@@ -144,7 +146,7 @@ class AutomationPlugin @Inject constructor(
             .toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ e ->
-                           if (e.isChanged(rh.gs(R.string.key_location))) {
+                           if (e.isChanged(rh.gs(StringKey.AutomationLocation.key))) {
                                locationServiceHelper.stopService(context)
                                locationServiceHelper.startService(context)
                            }
@@ -385,6 +387,7 @@ class AutomationPlugin @Inject constructor(
             TriggerRecurringTime(injector),
             TriggerTimeRange(injector),
             TriggerBg(injector),
+            TriggerDay(injector),
             TriggerDelta(injector),
             TriggerIob(injector),
             TriggerCOB(injector),
