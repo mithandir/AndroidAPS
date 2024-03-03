@@ -2,19 +2,19 @@ package app.aaps.core.keys
 
 enum class IntKey(
     override val key: Int,
-    val defaultValue: Int,
-    val min: Int,
-    val max: Int,
+    override val defaultValue: Int,
+    override val min: Int,
+    override val max: Int,
     override val defaultedBySM: Boolean = false,
-    val calculatedDefaultValue: Boolean = false,
+    override val calculatedDefaultValue: Boolean = false,
     override val showInApsMode: Boolean = true,
     override val showInNsClientMode: Boolean = true,
     override val showInPumpControlMode: Boolean = true,
-    override val dependency: BooleanKey? = null,
-    override val negativeDependency: BooleanKey? = null,
+    override val dependency: BooleanPreferenceKey? = null,
+    override val negativeDependency: BooleanPreferenceKey? = null,
     override val hideParentScreenIfHidden: Boolean = false,
-    val engineeringModeOnly: Boolean = false
-) : PreferenceKey {
+    override val engineeringModeOnly: Boolean = false
+) : IntPreferenceKey {
 
     OverviewCarbsButtonIncrement1(R.string.key_carbs_button_increment_1, 5, -50, 50, defaultedBySM = true),
     OverviewCarbsButtonIncrement2(R.string.key_carbs_button_increment_2, 10, -50, 50, defaultedBySM = true),
@@ -56,5 +56,8 @@ enum class IntKey(
 
     SmsRemoteBolusDistance(R.string.key_smscommunicator_remote_bolus_min_distance, 15, 3, 60),
 
-    BgSourceRandomInterval(R.string.key_randombg_interval_min, 5, 1, 15, defaultedBySM = true)
+    BgSourceRandomInterval(R.string.key_randombg_interval_min, 5, 1, 15, defaultedBySM = true),
+    GarminLocalHttpPort(R.string.key_garmin_communication_http_port, 28891, 1001, 65535, defaultedBySM = true, hideParentScreenIfHidden = true),
+    NsClientAlarmStaleData(R.string.key_ns_alarm_stale_data_value, 16, 15, 120),
+    NsClientUrgentAlarmStaleData(R.string.key_ns_alarm_urgent_stale_data_value, 31, 30, 180),
 }

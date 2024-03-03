@@ -118,14 +118,10 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         (savedInstanceState ?: arguments)?.let { bundle ->
-            if (bundle.containsKey(UiInteraction.PLUGIN_NAME)) {
-                pluginName = bundle.getString(UiInteraction.PLUGIN_NAME)
-                preferenceScreenClass = bundle.getString(UiInteraction.PREFERENCE_SCREEN)
-                xmlId = bundle.getInt(UiInteraction.XML_ID)
-            }
-            if (bundle.containsKey(FILTER)) {
-                filter = bundle.getString(FILTER) ?: ""
-            }
+            pluginName = bundle.getString(UiInteraction.PLUGIN_NAME)
+            preferenceScreenClass = bundle.getString(UiInteraction.PREFERENCE_SCREEN)
+            xmlId = bundle.getInt(UiInteraction.XML_ID)
+            filter = bundle.getString(FILTER, "")
         }
         if (pluginName != null) {
             val plugin = activePlugin.getPluginsList().firstOrNull { it.javaClass.simpleName == pluginName } ?: error("Plugin not found")
@@ -153,7 +149,6 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
             addPreferencesIfEnabled(autotunePlugin, rootKey)
             addPreferencesFromResource(R.xml.pref_alerts, rootKey)
             addPreferencesIfEnabled(maintenancePlugin, rootKey)
-            addPreferencesFromResource(app.aaps.plugins.configuration.R.xml.pref_datachoices, rootKey)
         }
         initSummary(preferenceScreen, pluginName != null)
         preprocessPreferences()
@@ -252,7 +247,7 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
     @SuppressLint("RestrictedApi")
     private fun addPreferencesFromScreen(p: PluginBase, key: String?) {
         val rootScreen = preferenceScreen ?: preferenceManager.createPreferenceScreen(requireContext()).also { preferenceScreen = it }
-        p.addPreferenceScreen(preferenceManager, rootScreen, requireContext())
+        p.addPreferenceScreen(preferenceManager, rootScreen, requireContext(), key)
         if (key != null) {
             // looking for sub screen
             val root: Preference = rootScreen.findPreference(key) ?: return
