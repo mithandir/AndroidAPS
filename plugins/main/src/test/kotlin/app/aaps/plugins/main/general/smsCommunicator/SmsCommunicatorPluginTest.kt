@@ -24,7 +24,6 @@ import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.sync.XDripBroadcast
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.AdaptiveIntentPreference
-import app.aaps.core.keys.AdaptiveSwitchPreference
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
@@ -34,6 +33,7 @@ import app.aaps.core.objects.extensions.fromGv
 import app.aaps.core.validators.AdaptiveDoublePreference
 import app.aaps.core.validators.AdaptiveIntPreference
 import app.aaps.core.validators.AdaptiveStringPreference
+import app.aaps.core.validators.AdaptiveSwitchPreference
 import app.aaps.core.validators.AdaptiveUnitPreference
 import app.aaps.implementation.iob.GlucoseStatusProviderImpl
 import app.aaps.plugins.aps.loop.LoopPlugin
@@ -98,6 +98,7 @@ class SmsCommunicatorPluginTest : TestBaseWithProfile() {
             if (it is AdaptiveSwitchPreference) {
                 it.preferences = preferences
                 it.sharedPrefs = sharedPrefs
+                it.config = config
             }
             if (it is AuthRequest) {
                 it.aapsLogger = aapsLogger
@@ -561,34 +562,34 @@ class SmsCommunicatorPluginTest : TestBaseWithProfile() {
         assertThat(smsCommunicatorPlugin.messages[2].text).isEqualTo(passCode)
         assertThat(smsCommunicatorPlugin.messages[3].text).isEqualTo("Current loop mode: $modeLgs")
 
-        //NSCLIENT RESTART
+        //AAPSCLIENT RESTART
         `when`(loop.isEnabled()).thenReturn(true)
         `when`(loop.isSuspended).thenReturn(false)
         smsCommunicatorPlugin.messages = ArrayList()
-        sms = Sms("1234", "NSCLIENT RESTART")
+        sms = Sms("1234", "AAPSCLIENT RESTART")
         smsCommunicatorPlugin.processSms(sms)
         assertThat(sms.ignored).isFalse()
-        assertThat(smsCommunicatorPlugin.messages[0].text).isEqualTo("NSCLIENT RESTART")
-        assertThat(smsCommunicatorPlugin.messages[1].text).contains("NSCLIENT RESTART")
+        assertThat(smsCommunicatorPlugin.messages[0].text).isEqualTo("AAPSCLIENT RESTART")
+        assertThat(smsCommunicatorPlugin.messages[1].text).contains("AAPSCLIENT RESTART")
 
-        //NSCLIENT BLA BLA
+        //AAPSCLIENT BLA BLA
         `when`(loop.isEnabled()).thenReturn(true)
         `when`(loop.isSuspended).thenReturn(false)
         smsCommunicatorPlugin.messages = ArrayList()
-        sms = Sms("1234", "NSCLIENT BLA BLA")
+        sms = Sms("1234", "AAPSCLIENT BLA BLA")
         smsCommunicatorPlugin.processSms(sms)
         assertThat(sms.ignored).isFalse()
-        assertThat(smsCommunicatorPlugin.messages[0].text).isEqualTo("NSCLIENT BLA BLA")
+        assertThat(smsCommunicatorPlugin.messages[0].text).isEqualTo("AAPSCLIENT BLA BLA")
         assertThat(smsCommunicatorPlugin.messages[1].text).isEqualTo("Wrong format")
 
-        //NSCLIENT BLABLA
+        //AAPSCLIENT BLABLA
         `when`(loop.isEnabled()).thenReturn(true)
         `when`(loop.isSuspended).thenReturn(false)
         smsCommunicatorPlugin.messages = ArrayList()
-        sms = Sms("1234", "NSCLIENT BLABLA")
+        sms = Sms("1234", "AAPSCLIENT BLABLA")
         smsCommunicatorPlugin.processSms(sms)
         assertThat(sms.ignored).isFalse()
-        assertThat(smsCommunicatorPlugin.messages[0].text).isEqualTo("NSCLIENT BLABLA")
+        assertThat(smsCommunicatorPlugin.messages[0].text).isEqualTo("AAPSCLIENT BLABLA")
         assertThat(smsCommunicatorPlugin.messages[1].text).isEqualTo("Wrong format")
 
         //PUMP
@@ -1191,7 +1192,7 @@ class SmsCommunicatorPluginTest : TestBaseWithProfile() {
     @Test
     fun preferenceScreenTest() {
         val screen = preferenceManager.createPreferenceScreen(context)
-        smsCommunicatorPlugin.addPreferenceScreen(preferenceManager, screen, context)
+        smsCommunicatorPlugin.addPreferenceScreen(preferenceManager, screen, context, null)
         assertThat(screen.preferenceCount).isGreaterThan(0)
     }
 }

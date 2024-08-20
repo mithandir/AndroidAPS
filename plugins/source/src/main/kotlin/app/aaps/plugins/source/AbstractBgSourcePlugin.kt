@@ -9,8 +9,8 @@ import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.source.BgSource
-import app.aaps.core.keys.AdaptiveSwitchPreference
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.validators.AdaptiveSwitchPreference
 
 abstract class AbstractBgSourcePlugin(
     pluginDescription: PluginDescription,
@@ -18,7 +18,8 @@ abstract class AbstractBgSourcePlugin(
     rh: ResourceHelper
 ) : PluginBase(pluginDescription, aapsLogger, rh), BgSource {
 
-    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context) {
+    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        if (requiredKey != null) return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {

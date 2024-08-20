@@ -3,6 +3,7 @@ package app.aaps.pump.equil
 import android.content.Context
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import android.text.format.DateFormat
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.pump.defs.ManufacturerType
@@ -79,7 +80,7 @@ import javax.inject.Singleton
     PluginDescription()
         .mainType(PluginType.PUMP)
         .fragmentClass(EquilFragment::class.java.name)
-        .pluginIcon(R.drawable.ic_equil_128)
+        .pluginIcon(app.aaps.core.ui.R.drawable.ic_equil_128)
         .pluginName(R.string.equil_name)
         .shortName(R.string.equil_name_short)
         .preferencesId(R.xml.pref_equil)
@@ -243,6 +244,7 @@ import javax.inject.Singleton
                 pumpEnactResult = cancelTempBasal(true)
             }
             if (pumpEnactResult.success) {
+                SystemClock.sleep(EquilConst.EQUIL_BLE_NEXT_CMD)
                 pumpEnactResult = equilManager.setTempBasal(
                     absoluteRate, durationInMinutes, false
                 )

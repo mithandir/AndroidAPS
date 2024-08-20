@@ -2,18 +2,18 @@ package app.aaps.core.keys
 
 enum class DoubleKey(
     override val key: Int,
-    val defaultValue: Double,
-    val min: Double,
-    val max: Double,
+    override val defaultValue: Double,
+    override val min: Double,
+    override val max: Double,
     override val defaultedBySM: Boolean = false,
-    val calculatedBySM: Boolean = false,
+    override val calculatedBySM: Boolean = false,
     override val showInApsMode: Boolean = true,
     override val showInNsClientMode: Boolean = true,
     override val showInPumpControlMode: Boolean = true,
-    override val dependency: BooleanKey? = null,
-    override val negativeDependency: BooleanKey? = null,
+    override val dependency: BooleanPreferenceKey? = null,
+    override val negativeDependency: BooleanPreferenceKey? = null,
     override val hideParentScreenIfHidden: Boolean = false
-) : PreferenceKey {
+) : DoublePreferenceKey {
 
     OverviewInsulinButtonIncrement1(R.string.key_insulin_button_increment_1, 0.5, -5.0, 5.0, defaultedBySM = true, dependency = BooleanKey.OverviewShowInsulinButton),
     OverviewInsulinButtonIncrement2(R.string.key_insulin_button_increment_2, 1.0, -5.0, 5.0, defaultedBySM = true, dependency = BooleanKey.OverviewShowInsulinButton),
@@ -21,7 +21,7 @@ enum class DoubleKey(
     ActionsFillButton1(R.string.key_fill_button_1, 0.3, 0.05, 20.0, defaultedBySM = true, hideParentScreenIfHidden = true),
     ActionsFillButton2(R.string.key_fill_button_2, 0.0, 0.05, 20.0, defaultedBySM = true),
     ActionsFillButton3(R.string.key_fill_button_3, 0.0, 0.05, 20.0, defaultedBySM = true),
-    SafetyMaxBolus(R.string.key_safety_max_bolus, 3.0, 0.1, 25.0),
+    SafetyMaxBolus(R.string.key_safety_max_bolus, 3.0, 0.1, 60.0),
     ApsMaxBasal(R.string.key_openaps_max_basal, 1.0, 0.1, 25.0, defaultedBySM = true, calculatedBySM = true),
     ApsSmbMaxIob(R.string.key_openaps_smb_max_iob, 3.0, 0.0, 70.0, defaultedBySM = true, calculatedBySM = true),
     ApsAmaMaxIob(R.string.key_openaps_ama_max_iob, 1.5, 0.0, 25.0, defaultedBySM = true, calculatedBySM = true),
@@ -34,6 +34,18 @@ enum class DoubleKey(
     AbsorptionMaxTime(R.string.key_absorption_maxtime, 6.0, 4.0, 10.0),
     AutosensMin(R.string.key_openaps_autosens_min, 0.7, 0.1, 1.0, defaultedBySM = true, hideParentScreenIfHidden = true),
     AutosensMax(R.string.key_openaps_autosens_max, 1.2, 0.5, 3.0, defaultedBySM = true),
+    ApsAutoIsfMin(R.string.key_openapsama_autoISF_min, 1.0, 0.3, 1.0, defaultedBySM = true),
+    ApsAutoIsfMax(R.string.key_openapsama_autoISF_max, 1.0, 1.0, 3.0, defaultedBySM = true),
+    ApsAutoIsfBgAccelWeight(R.string.key_openapsama_bgAccel_ISF_weight, 0.0, 0.0, 1.0, defaultedBySM = true),
+    ApsAutoIsfBgBrakeWeight(R.string.key_openapsama_bgBrake_ISF_weight, 0.0, 0.0, 1.0, defaultedBySM = true),
+    ApsAutoIsfLowBgWeight(R.string.key_openapsama_lower_ISFrange_weight, 0.0, 0.0, 2.0, defaultedBySM = true),
+    ApsAutoIsfHighBgWeight(R.string.key_openapsama_higher_ISFrange_weight, 0.0, 0.0, 2.0, defaultedBySM = true),
+    ApsAutoIsfPpWeight(R.string.key_openapsama_pp_ISF_weight, 0.0, 0.0, 1.0, defaultedBySM = true),
+    ApsAutoIsfDuraWeight(R.string.key_openapsama_dura_ISF_weight, 0.0, 0.0, 3.0, defaultedBySM = true),
+    ApsAutoIsfSmbDeliveryRatio(R.string.key_openapsama_smb_delivery_ratio, 0.5, 0.5, 1.0, defaultedBySM = true),
+    ApsAutoIsfSmbDeliveryRatioMin(R.string.key_openapsama_smb_delivery_ratio_min, 0.5, 0.5, 1.0, defaultedBySM = true),
+    ApsAutoIsfSmbDeliveryRatioMax(R.string.key_openapsama_smb_delivery_ratio_max, 0.5, 0.5, 1.0, defaultedBySM = true),
+    ApsAutoIsfSmbMaxRangeExtension(R.string.key_openapsama_smb_max_range_extension, 1.0, 1.0, 5.0, defaultedBySM = true),
     EquilMaxBolus(R.string.key_equil_maxbolus, 10.0, 0.1, 25.0),
 
 }

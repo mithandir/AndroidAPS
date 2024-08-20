@@ -1,7 +1,10 @@
 package app.aaps.plugins.main.general.overview
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import androidx.annotation.StringRes
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
@@ -27,7 +30,6 @@ import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.AdaptiveIntentPreference
-import app.aaps.core.keys.AdaptiveSwitchPreference
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
@@ -43,11 +45,13 @@ import app.aaps.core.objects.extensions.storeString
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.validators.AdaptiveDoublePreference
 import app.aaps.core.validators.AdaptiveIntPreference
+import app.aaps.core.validators.AdaptiveSwitchPreference
 import app.aaps.core.validators.AdaptiveUnitPreference
 import app.aaps.plugins.main.R
 import app.aaps.plugins.main.general.overview.notifications.NotificationStore
 import app.aaps.plugins.main.general.overview.notifications.NotificationWithAction
 import app.aaps.plugins.main.general.overview.notifications.events.EventUpdateOverviewNotification
+import app.aaps.plugins.main.general.overview.notifications.receivers.DismissNotificationReceiver
 import app.aaps.shared.impl.rx.bus.RxBusImpl
 import dagger.android.HasAndroidInjector
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -118,6 +122,7 @@ class OverviewPlugin @Inject constructor(
 
     override fun onStart() {
         super.onStart()
+        registerLocalBroadcastReceiver()
         overviewMenus.loadGraphConfig()
         overviewData.initRange()
 
@@ -154,6 +159,7 @@ class OverviewPlugin @Inject constructor(
 
     override fun onStop() {
         disposable.clear()
+        unregisterLocalBroadcastReceiver()
         super.onStop()
     }
 
@@ -223,7 +229,8 @@ class OverviewPlugin @Inject constructor(
         }
     }
 
-    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context) {
+    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        if (requiredKey != null && requiredKey != "overview_buttons_settings" && requiredKey != "default_temp_targets_settings" && requiredKey != "prime_fill_settings" && requiredKey != "range_settings" && requiredKey != "statuslights_overview_advanced" && requiredKey != "overview_advanced_settings") return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
@@ -252,7 +259,7 @@ class OverviewPlugin @Inject constructor(
                     ctx = context,
                     intentKey = IntentKey.OverviewQuickWizardSettings,
                     title = R.string.quickwizard_settings,
-                    intent = Intent().apply { action = uiInteraction.quickWizardListActivity::class.java.name }
+                    intent = Intent(context, uiInteraction.quickWizardListActivity)
                 )
             )
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
@@ -309,5 +316,20 @@ class OverviewPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseSuperBolus, summary = R.string.enablesuperbolus_summary, title = R.string.enablesuperbolus))
             })
         }
+    }
+
+    private val dismissReceiver = DismissNotificationReceiver()
+
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private fun registerLocalBroadcastReceiver() {
+        val filter = IntentFilter().apply { addAction(DismissNotificationReceiver.ACTION) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            context.registerReceiver(dismissReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        else
+            context.registerReceiver(dismissReceiver, filter)
+    }
+
+    private fun unregisterLocalBroadcastReceiver() {
+        context.unregisterReceiver(dismissReceiver)
     }
 }
