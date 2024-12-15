@@ -64,6 +64,7 @@ class DetermineBasalResult @Inject constructor(val injector: HasAndroidInjector)
     override var carbsReq = 0
     override var carbsReqWithin = 0
     override var variableSens: Double? = null
+    override var isfMgdlForCarbs: Double? = null // used only to pass to AAPS client
     override var scriptDebug: List<String>? = null
     var eventualBG = 0.0
     var snoozeBG = 0.0
@@ -110,6 +111,7 @@ class DetermineBasalResult @Inject constructor(val injector: HasAndroidInjector)
         targetBG = result.targetBG ?: 0.0
         deliverAt = result.deliverAt ?: 0L
         variableSens = result.variable_sens
+        isfMgdlForCarbs = result.isfMgdlForCarbs
         scriptDebug = result.consoleError
     }
 
@@ -301,7 +303,7 @@ class DetermineBasalResult @Inject constructor(val injector: HasAndroidInjector)
                 }
                 // always report high temp
                 if (pump.pumpDescription.tempBasalStyle == PumpDescription.PERCENT) {
-                    val pumpLimit = pump.pumpDescription.pumpType.tbrSettings?.maxDose ?: 0.0
+                    val pumpLimit = pump.pumpDescription.pumpType.tbrSettings()?.maxDose ?: 0.0
                     if (percent.toDouble() == pumpLimit) {
                         aapsLogger.debug(LTag.APS, "TRUE: Pump limit")
                         return true
@@ -337,7 +339,7 @@ class DetermineBasalResult @Inject constructor(val injector: HasAndroidInjector)
                 }
                 // always report high temp
                 if (pump.pumpDescription.tempBasalStyle == PumpDescription.ABSOLUTE) {
-                    val pumpLimit = pump.pumpDescription.pumpType.tbrSettings?.maxDose ?: 0.0
+                    val pumpLimit = pump.pumpDescription.pumpType.tbrSettings()?.maxDose ?: 0.0
                     if (rate == pumpLimit) {
                         aapsLogger.debug(LTag.APS, "TRUE: Pump limit")
                         return true

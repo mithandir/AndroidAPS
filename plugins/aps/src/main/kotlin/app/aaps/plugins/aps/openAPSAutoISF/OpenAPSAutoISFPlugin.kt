@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.LongSparseArray
+import androidx.core.util.forEach
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
@@ -30,6 +31,7 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
@@ -40,10 +42,10 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.Round
-import app.aaps.core.keys.AdaptiveIntentPreference
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
@@ -60,16 +62,18 @@ import app.aaps.core.objects.extensions.store
 import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.utils.MidnightUtils
-import app.aaps.core.validators.AdaptiveDoublePreference
-import app.aaps.core.validators.AdaptiveIntPreference
-import app.aaps.core.validators.AdaptiveSwitchPreference
-import app.aaps.core.validators.AdaptiveUnitPreference
+import app.aaps.core.validators.preferences.AdaptiveDoublePreference
+import app.aaps.core.validators.preferences.AdaptiveIntPreference
+import app.aaps.core.validators.preferences.AdaptiveIntentPreference
+import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
+import app.aaps.core.validators.preferences.AdaptiveUnitPreference
 import app.aaps.plugins.aps.OpenAPSFragment
 import app.aaps.plugins.aps.R
 import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
 import app.aaps.plugins.aps.events.EventResetOpenAPSGui
 import dagger.android.HasAndroidInjector
 import org.json.JSONObject
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.floor
@@ -96,6 +100,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val glucoseStatusProvider: GlucoseStatusProvider,
     private val bgQualityCheck: BgQualityCheck,
+    private val uiInteraction: UiInteraction,
     private val determineBasalAutoISF: DetermineBasalAutoISF,
     private val profiler: Profiler
 ) : PluginBase(
@@ -139,27 +144,60 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val exerciseMode; get() = SMBDefaults.exercise_mode
     private val highTemptargetRaisesSensitivity; get() = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens)
     val normalTarget = 100
+    private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
+
+
+    override fun onStart() {
+        super.onStart()
+        var count = 0
+        val apsResults = persistenceLayer.getApsResults(dateUtil.now() - T.days(1).msecs(), dateUtil.now())
+        apsResults.forEach {
+            val glucose = it.glucoseStatus?.glucose ?: return@forEach
+            val variableSens = it.variableSens ?: return@forEach
+            val timestamp = it.date
+            val key = timestamp - timestamp % T.mins(minutesClass).msecs() + glucose.toLong()
+            if (variableSens > 0) autoIsfCache.put(key, variableSens)
+            count++
+        }
+        aapsLogger.debug(LTag.APS, "Loaded $count variable sensitivity values from database")
+    }
 
     override fun supportsDynamicIsf() = true //: Boolean = preferences.get(BooleanKey.ApsUseAutoIsf)
 
-    override fun getIsfMgdl(multiplier: Double, timeShift: Int, caller: String): Double? {
+    override fun getIsfMgdl(profile: Profile, caller: String): Double? {
         val start = dateUtil.now()
-        val sensitivity = calculateVariableIsf(start, bg = null)
-        profiler.log(LTag.APS, String.format("getIsfMgdl() %s %f %s %s", sensitivity.first, sensitivity.second, dateUtil.dateAndTimeAndSecondsString(start), caller), start)
+        val multiplier = (profile as ProfileSealed.EPS).value.originalPercentage / 100.0
+        val sensitivity = calculateVariableIsf(start)
+        if (sensitivity.second == null && caller == "OpenAPSSMBPlugin")
+            uiInteraction.addNotificationValidTo(
+                Notification.DYN_ISF_FALLBACK, start,
+                rh.gs(R.string.fallback_to_isf_no_tdd, sensitivity.first), Notification.INFO, dateUtil.now() + T.mins(1).msecs()
+            )
+        else
+            uiInteraction.dismissNotification(Notification.DYN_ISF_FALLBACK)
+        profiler.log(LTag.APS, String.format(Locale.getDefault(), "getIsfMgdl() %s %f %s %s", sensitivity.first, sensitivity.second, dateUtil.dateAndTimeAndSecondsString(start), caller), start)
         return sensitivity.second?.let { it * multiplier }
     }
 
-    override fun getIsfMgdl(timestamp: Long, bg: Double, multiplier: Double, timeShift: Int, caller: String): Double? {
-        val start = dateUtil.now()
-        val sensitivity = calculateVariableIsf(timestamp, bg)
-        profiler.log(LTag.APS, String.format("getIsfMgdl() %s %f %s %s", sensitivity.first, sensitivity.second, dateUtil.dateAndTimeAndSecondsString(timestamp), caller), start)
-        return sensitivity.second?.let { it * multiplier }
+    override fun getAverageIsfMgdl(timestamp: Long, caller: String): Double? {
+        var count = 0
+        var sum = 0.0
+        val start = timestamp - T.hours(24).msecs()
+        autoIsfCache.forEach { key, value ->
+            if (key in start..timestamp) {
+                count++
+                sum += value
+            }
+        }
+        val sensitivity = if (count == 0) null else sum / count
+        aapsLogger.debug(LTag.APS, "getAverageIsfMgdl() $sensitivity from $count values ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $caller")
+        return sensitivity
     }
 
     override fun specialEnableCondition(): Boolean {
         return try {
                 activePlugin.activePump.pumpDescription.isTempBasalCapable
-            } catch (ignored: Exception) {
+            } catch (_: Exception) {
                 // may fail during initialization
                 true
             }
@@ -174,36 +212,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         super.preprocessPreferences(preferenceFragment)
         val smbAlwaysEnabled = preferences.get(BooleanKey.ApsUseSmbAlways)
         val advancedFiltering = activePlugin.activeBgSource.advancedFilteringSupported()
-        preferenceFragment.findPreference<SwitchPreference>(rh.gs(app.aaps.core.keys.R.string.key_openaps_allow_smb_with_COB))?.isVisible = !smbAlwaysEnabled || !advancedFiltering
-        preferenceFragment.findPreference<SwitchPreference>(rh.gs(app.aaps.core.keys.R.string.key_openaps_allow_smb_with_low_temp_target))?.isVisible = !smbAlwaysEnabled || !advancedFiltering
-        preferenceFragment.findPreference<SwitchPreference>(rh.gs(app.aaps.core.keys.R.string.key_openaps_enable_smb_after_carbs))?.isVisible = !smbAlwaysEnabled || !advancedFiltering
+        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithCob.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
+        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithLowTt.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
+        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbAfterCarbs.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
     }
 
-    private val dynIsfCache = LongSparseArray<Double>()
-    private fun calculateVariableIsf(timestamp: Long, bg: Double?): Pair<String, Double?> {
+    private val autoIsfCache = LongSparseArray<Double>()
+
+    @Synchronized
+    private fun calculateVariableIsf(timestamp: Long): Pair<String, Double?> {
         val profile = profileFunction.getProfile(timestamp)
         if (profile == null) return Pair("OFF", null)
-        if (!preferences.get(BooleanKey.ApsUseDynamicSensitivity)) return Pair("OFF", null)
-        val result = persistenceLayer.getApsResultCloseTo(timestamp)
-        if (result?.variableSens != null) {
-            aapsLogger.debug("calculateVariableIsf DB  ${dateUtil.dateAndTimeAndSecondsString(timestamp)} ${result.variableSens}")
-            return Pair("DB", result.variableSens)
-        }
-        val glucose = bg ?: glucoseStatusProvider.glucoseStatusData?.glucose ?: return Pair("GLUC", null)
-        // Round down to 30 min and use it as a key for caching
+        val glucose = glucoseStatusProvider.glucoseStatusData?.glucose ?: return Pair("GLUC", null)
+        // Round down to minutesClass min and use it as a key for caching
         // Add BG to key as it affects calculation
-        val key = timestamp - timestamp % T.mins(30).msecs() + glucose.toLong()
-        val cached = dynIsfCache[key]
-        if (cached != null && timestamp < dateUtil.now()) {
-            aapsLogger.debug("calculateVariableIsf HIT ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $cached")
-            return Pair("HIT", cached)
+        val key = timestamp - timestamp % T.mins(minutesClass).msecs() + glucose.toLong()
+        val sensitivity = autoISF(timestamp, profile)
+        if (sensitivity > 0) {
+            // can default to 0, e.g. for the first 2-3 loops in a virgin setup
+            aapsLogger.debug("calculateVariableIsf CALC ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $sensitivity")
+            autoIsfCache.put(key, sensitivity)
+            if (autoIsfCache.size() > 1000) autoIsfCache.clear()
         }
-        // no cached result found, let's calculate the value
-        val autoIsfTimestamp = autoISF(timestamp, profile)
-        val sensitivity = autoIsfTimestamp
-        dynIsfCache.put(key, sensitivity)
-        if (dynIsfCache.size() > 1000) dynIsfCache.clear()
-        return Pair("CALC", sensitivity)
+        // this return is mandatory, otherwise it messed up the AutoISF algo.
+        return Pair("OFF", null)
     }
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
@@ -488,13 +520,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     override fun configuration(): JSONObject =
         JSONObject()
-            .put(BooleanKey.ApsUseDynamicSensitivity, preferences, rh)
-            .put(IntKey.ApsDynIsfAdjustmentFactor, preferences, rh)
+            .put(BooleanKey.ApsUseDynamicSensitivity, preferences)
+            .put(IntKey.ApsDynIsfAdjustmentFactor, preferences)
 
     override fun applyConfiguration(configuration: JSONObject) {
         configuration
-            .store(BooleanKey.ApsUseDynamicSensitivity, preferences, rh)
-            .store(IntKey.ApsDynIsfAdjustmentFactor, preferences, rh)
+            .store(BooleanKey.ApsUseDynamicSensitivity, preferences)
+            .store(IntKey.ApsDynIsfAdjustmentFactor, preferences)
     }
 
     // Rounds value to 'digits' decimal places
@@ -670,15 +702,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         var dura_ISF = 1.0
         val weightISF: Double = dura_ISF_weight
         when {
-            dura05 < 10.0                                      -> {
+            dura05 < 10.0      -> {
                 consoleError.add("dura_ISF by-passed; bg is only $dura05 m at level $avg05")
             }
 
-            avg05 <= target_bg                                 -> {
+            avg05 <= target_bg -> {
                 consoleError.add("dura_ISF by-passed; avg. glucose $avg05 below target $target_bg")
             }
 
-            else                                               -> {
+            else               -> {
                 // fight the resistance at high levels
                 val dura05Weight = dura05 / 60
                 val avg05Weight = weightISF / target_bg
@@ -703,7 +735,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     fun interpolate(xdata: Double): Double {   // interpolate ISF behaviour based on polygons defining nonlinear functions defined by value pairs for ...
-            //  ...         <----------------------  glucose  ---------------------->
+        //  ...         <----------------------  glucose  ---------------------->
         val polyX = arrayOf(50.0, 60.0, 80.0, 90.0, 100.0, 110.0, 150.0, 180.0, 200.0)
         val polyY = arrayOf(-0.5, -0.5, -0.3, -0.2, 0.0, 0.0, 0.5, 0.7, 0.7)
         val polymax: Int = polyX.size - 1
@@ -762,8 +794,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         newVal = if (xdata > 100) {
             newVal * higher_ISFrange_weight
-        }
-        else {
+        } else {
             newVal * lower_ISFrange_weight
         }
         return newVal
@@ -813,21 +844,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val evenTarget: Boolean
             val msgUnits: String
             val msgTail: String
-            val msgEven: String
             if (profile.out_units == "mmol/L") {
-                evenTarget = (target.toDouble() * 10.0).toInt() % 2 == 0
+                evenTarget = round(target * 10.0, 0).toInt() % 2 == 0
+                target = round(target, 1)
                 msgUnits = "has"
                 msgTail = "decimal"
             } else {
-                evenTarget = target.toInt() % 2 == 0
+                evenTarget = round(target, 0).toInt() % 2 == 0
+                target = round(target, 0)
                 msgUnits = "is"
                 msgTail = "number"
             }
-            msgEven = if (evenTarget) {
-                "even"
-            } else {
-                "odd"
-            }
+            val msgEven: String = if (evenTarget) "even" else "odd"
 
             val iobThUser = preferences.get(IntKey.ApsAutoIsfIobThPercent)  //iobThresholdPercent
             if (useIobTh) {
@@ -850,7 +878,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 consoleLog.add("SMB disabled because of max_iob=0")
                 return "blocked"
             } else if (useIobTh && iobThEffective < iob_data_iob) {
-                consoleLog.add("SMB disabled by Full Loop logic: iob ${iob_data_iob} is above effective iobTH $iobThEffective")
+                consoleLog.add("SMB disabled by Full Loop logic: iob $iob_data_iob is above effective iobTH $iobThEffective")
                 consoleLog.add("Loop power level temporarily capped")
                 return "iobTH"
             } else {
@@ -864,7 +892,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
             }
         }
-        consoleLog.add("Loop allows APS power level")
+        consoleLog.add("Loop allows AAPS power level")
         return "AAPS"                                                      // leave it to standard AAPS
     }
 
@@ -919,7 +947,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsResistanceLowersTarget, summary = R.string.resistance_lowers_target_summary, title = R.string.resistance_lowers_target_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfHighTtRaisesSens, summary = R.string.high_temptarget_raises_sensitivity_summary, title = R.string.high_temptarget_raises_sensitivity_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfLowTtLowersSens, summary = R.string.low_temptarget_lowers_sensitivity_summary, title = R.string.low_temptarget_lowers_sensitivity_title))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsAutoIsfHalfBasalExerciseTarget, summary = R.string.half_basal_exercise_target_summary, title = R.string.half_basal_exercise_target_title))
+            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsAutoIsfHalfBasalExerciseTarget, dialogMessage = R.string.half_basal_exercise_target_summary, title = R.string.half_basal_exercise_target_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmb, summary = R.string.enable_smb_summary, title = R.string.enable_smb))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbWithHighTt, summary = R.string.enable_smb_with_high_temp_target_summary, title = R.string.enable_smb_with_high_temp_target))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbAlways, summary = R.string.enable_smb_always_summary, title = R.string.enable_smb_always))

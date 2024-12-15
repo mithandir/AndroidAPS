@@ -26,6 +26,7 @@ fun UserEntry.Sources.fromDb(): Sources =
         UserEntry.Sources.Announcement        -> Sources.Announcement
         UserEntry.Sources.Actions             -> Sources.Actions
         UserEntry.Sources.Automation          -> Sources.Automation
+        UserEntry.Sources.SettingsExport      -> Sources.SettingsExport
         UserEntry.Sources.Autotune            -> Sources.Autotune
         UserEntry.Sources.BG                  -> Sources.BG
         UserEntry.Sources.Aidex               -> Sources.Aidex
@@ -77,6 +78,8 @@ fun UserEntry.Sources.fromDb(): Sources =
         UserEntry.Sources.Garmin              -> Sources.Garmin
         UserEntry.Sources.Database            -> Sources.Database
         UserEntry.Sources.Unknown             -> Sources.Unknown
+        UserEntry.Sources.Ottai               -> Sources.Ottai
+        UserEntry.Sources.SyaiTag             -> Sources.SyaiTag
     }
 
 fun Sources.toDb(): UserEntry.Sources =
@@ -100,6 +103,7 @@ fun Sources.toDb(): UserEntry.Sources =
         Sources.Exercise            -> UserEntry.Sources.Exercise
         Sources.Question            -> UserEntry.Sources.Question
         Sources.Announcement        -> UserEntry.Sources.Announcement
+        Sources.SettingsExport      -> UserEntry.Sources.SettingsExport
         Sources.Actions             -> UserEntry.Sources.Actions
         Sources.Automation          -> UserEntry.Sources.Automation
         Sources.Autotune            -> UserEntry.Sources.Autotune
@@ -153,5 +157,7 @@ fun Sources.toDb(): UserEntry.Sources =
         Sources.Garmin              -> UserEntry.Sources.Garmin
         Sources.Database            -> UserEntry.Sources.Database
         Sources.Unknown             -> UserEntry.Sources.Unknown
+        Sources.Ottai               -> UserEntry.Sources.Ottai
+        Sources.SyaiTag             -> UserEntry.Sources.SyaiTag
     }
 

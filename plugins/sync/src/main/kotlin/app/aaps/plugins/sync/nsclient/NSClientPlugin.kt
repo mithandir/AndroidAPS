@@ -37,11 +37,11 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.Preferences
 import app.aaps.core.keys.StringKey
 import app.aaps.core.objects.extensions.toJson
-import app.aaps.core.validators.AdaptiveIntPreference
-import app.aaps.core.validators.AdaptiveStringPreference
-import app.aaps.core.validators.AdaptiveSwitchPreference
 import app.aaps.core.validators.DefaultEditTextValidator
 import app.aaps.core.validators.EditTextValidator
+import app.aaps.core.validators.preferences.AdaptiveIntPreference
+import app.aaps.core.validators.preferences.AdaptiveStringPreference
+import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.nsShared.NSClientFragment
 import app.aaps.plugins.sync.nsShared.events.EventNSClientStatus
@@ -76,7 +76,7 @@ class NSClientPlugin @Inject constructor(
         .mainType(PluginType.SYNC)
         .fragmentClass(NSClientFragment::class.java.name)
         .pluginIcon(app.aaps.core.ui.R.drawable.ic_nightscout_syncs)
-        .pluginName(R.string.ns_client)
+        .pluginName(R.string.ns_client_title)
         .shortName(R.string.ns_client_short_name)
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .description(R.string.description_ns_client),
@@ -125,8 +125,8 @@ class NSClientPlugin @Inject constructor(
         super.onStop()
     }
 
-    override val hasWritePermission: Boolean get() = nsClientService?.hasWriteAuth ?: false
-    override val connected: Boolean get() = nsClientService?.isConnected ?: false
+    override val hasWritePermission: Boolean get() = nsClientService?.hasWriteAuth == true
+    override val connected: Boolean get() = nsClientService?.isConnected == true
 
     private val mConnection: ServiceConnection = object : ServiceConnection {
         override fun onServiceDisconnected(name: ComponentName) {
@@ -256,7 +256,7 @@ class NSClientPlugin @Inject constructor(
         parent.addPreference(category)
         category.apply {
             key = "ns_client_settings"
-            title = rh.gs(R.string.ns_client_internal_title)
+            title = rh.gs(R.string.ns_client_title)
             initialExpandedChildrenCount = 0
             addPreference(
                 AdaptiveStringPreference(
@@ -266,7 +266,7 @@ class NSClientPlugin @Inject constructor(
             )
             addPreference(
                 AdaptiveStringPreference(
-                    ctx = context, stringKey = StringKey.NsClientApiSecret, dialogMessage = R.string.ns_client_secret_dialog_title, title = R.string.ns_client_secret_title,
+                    ctx = context, stringKey = StringKey.NsClientApiSecret, dialogMessage = R.string.ns_client_secret_dialog_message, title = R.string.ns_client_secret_title,
                     validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MIN_LENGTH, minLength = 12)
                 )
             )
