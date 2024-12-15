@@ -1,14 +1,14 @@
 plugins {
     alias(libs.plugins.android.library)
+    alias(libs.plugins.ksp)
     id("kotlin-android")
-    id("kotlin-kapt")
     id("android-module-dependencies")
     id("test-module-dependencies")
     id("jacoco-module-dependencies")
 }
 
 android {
-    namespace = "info.nightscout.androidaps.plugins.pump.common.hw.rileylink"
+    namespace = "app.aaps.pump.common.hw.rileylink"
 }
 
 dependencies {
@@ -21,6 +21,6 @@ dependencies {
 
     api(libs.net.danlew.android.joda)
 
-    kapt(libs.com.google.dagger.compiler)
-    kapt(libs.com.google.dagger.android.processor)
+    ksp(libs.com.google.dagger.compiler)
+    ksp(libs.com.google.dagger.android.processor)
 }
