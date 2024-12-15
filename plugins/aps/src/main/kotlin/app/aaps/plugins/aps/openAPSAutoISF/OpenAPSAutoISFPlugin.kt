@@ -112,7 +112,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         .shortName(R.string.autoisf_shortname)
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .preferencesVisibleInSimpleMode(false)
-        .showInList(true)
+        .showInList { true }
         .description(R.string.description_auto_isf),
     aapsLogger, rh
 ), APS, PluginConstraints {
