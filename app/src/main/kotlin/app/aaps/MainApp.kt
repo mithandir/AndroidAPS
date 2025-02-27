@@ -9,10 +9,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import androidx.lifecycle.ProcessLifecycleOwner
-import androidx.work.Data
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequest
-import androidx.work.WorkManager
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Action
@@ -49,6 +45,10 @@ import app.aaps.receivers.KeepAliveWorker
 import app.aaps.receivers.TimeDateOrTZChangeReceiver
 import app.aaps.ui.activityMonitor.ActivityMonitor
 import app.aaps.ui.widget.Widget
+import com.google.firebase.FirebaseApp
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
+import com.google.firebase.remoteconfig.ktx.remoteConfig
 import dagger.android.AndroidInjector
 import dagger.android.DaggerApplication
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -61,7 +61,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import rxdogtag2.RxDogTag
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -114,6 +113,7 @@ class MainApp : DaggerApplication() {
             aapsLogger.debug("BuildVersion: " + config.BUILD_VERSION)
             aapsLogger.debug("Remote: " + config.REMOTE)
             registerLocalBroadcastReceiver()
+            setupRemoteConfig()
 
             // trigger here to see the new version on app start after an update
             handler.postDelayed({ versionCheckersUtils.triggerCheckVersion() }, 30000)
@@ -211,9 +211,15 @@ class MainApp : DaggerApplication() {
             sp.putBoolean("ConfigBuilder_APS_OpenAPSSMB_Enabled", true)
             preferences.put(BooleanKey.ApsUseDynamicSensitivity, true)
         }
-        // convert Double to IntString
-        if (preferences.getIfExists(IntKey.ApsDynIsfAdjustmentFactor) != null)
-            sp.putString(IntKey.ApsDynIsfAdjustmentFactor.key, preferences.get(IntKey.ApsDynIsfAdjustmentFactor).toString())
+        // convert Double to Int
+        try {
+            val dynIsf = sp.getDouble("DynISFAdjust", 0.0)
+            if (dynIsf != 0.0 && dynIsf.toInt() != preferences.get(IntKey.ApsDynIsfAdjustmentFactor))
+                preferences.put(IntKey.ApsDynIsfAdjustmentFactor, dynIsf.toInt())
+        } catch (_: Exception) { /* ignore */
+        }
+        // Clear SmsOtpPassword if wrongly replaced
+        if (preferences.get(StringKey.SmsOtpPassword).length > 10) preferences.put(StringKey.SmsOtpPassword, "")
     }
 
     override fun applicationInjector(): AndroidInjector<out DaggerApplication> {
@@ -243,6 +249,25 @@ class MainApp : DaggerApplication() {
         filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
         filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
         registerReceiver(BTReceiver(), filter)
+    }
+
+    private fun setupRemoteConfig() {
+        FirebaseApp.initializeApp(this)
+        Firebase.remoteConfig.also { firebaseRemoteConfig ->
+
+            firebaseRemoteConfig.setConfigSettingsAsync(
+                FirebaseRemoteConfigSettings
+                    .Builder()
+                    .setMinimumFetchIntervalInSeconds(3600)
+                    .build()
+            )
+            firebaseRemoteConfig
+                .fetchAndActivate()
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) aapsLogger.debug("RemoteConfig received successfully")
+                    else aapsLogger.error("RemoteConfig fetch failed")
+                }
+        }
     }
 
     override fun onTerminate() {

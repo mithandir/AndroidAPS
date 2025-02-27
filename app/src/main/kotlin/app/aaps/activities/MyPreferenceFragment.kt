@@ -21,7 +21,6 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
-import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.PasswordCheck
 import app.aaps.core.interfaces.protection.ProtectionCheck.ProtectionType.BIOMETRIC
 import app.aaps.core.interfaces.protection.ProtectionCheck.ProtectionType.CUSTOM_PASSWORD
@@ -34,10 +33,12 @@ import app.aaps.core.interfaces.rx.events.EventRebuildTabs
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.keys.BooleanKey
-import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.DoublePreferenceKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.IntPreferenceKey
 import app.aaps.core.keys.Preferences
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringPreferenceKey
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.utils.extensions.safeGetSerializable
 import app.aaps.core.validators.DefaultEditTextValidator
@@ -67,7 +68,6 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var sp: SP
     @Inject lateinit var preferences: Preferences
-    @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var config: Config
     @Inject lateinit var passwordCheck: PasswordCheck
@@ -129,10 +129,8 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
         if (pluginName != null) {
             val plugin = activePlugin.getPluginsList().firstOrNull { it.javaClass.simpleName == pluginName } ?: error("Plugin not found")
             addPreferencesIfEnabled(plugin, rootKey)
-        } else if (customPreference != null) {
-            when (customPreference!!) {
-                UiInteraction.Preferences.PROTECTION -> addProtectionScreen(rootKey)
-            }
+        } else if (customPreference == UiInteraction.Preferences.PROTECTION) {
+            addProtectionScreen(rootKey)
         } else {
             addGeneralScreen(rootKey)
             addProtectionScreen(rootKey)
@@ -152,7 +150,11 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
             addAlertScreen(rootKey)
             addPreferencesIfEnabled(maintenancePlugin, rootKey)
         }
-        initSummary(preferenceScreen, pluginName != null)
+        try {
+            initSummary(preferenceScreen, pluginName != null)
+        } catch (e: Exception) {
+            throw Exception("Error in onCreatePreferences pluginName=$pluginName customPreference=$customPreference rootKey=$rootKey filter=$filter", e)
+        }
         preprocessPreferences()
         if (filter != "") updateFilterVisibility(filter, preferenceScreen)
     }
@@ -281,13 +283,13 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
         pref ?: return
         val keyDefinition = pref.key?.let { preferences.getIfExists(it) }
         when (keyDefinition) {
-            is IntKey,
-            is DoubleKey -> {
+            is IntPreferenceKey,
+            is DoublePreferenceKey -> {
                 if (pref is EditTextPreference && pref.text != null) pref.summary = pref.text
                 if (pref is ListPreference) pref.summary = pref.entry
             }
 
-            is StringKey -> {
+            is StringPreferenceKey -> {
                 val value = sp.getString(pref.key, "")
                 when {
                     // We use Preference and custom editor instead of EditTextPreference
@@ -304,8 +306,8 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
         for (plugin in activePlugin.getPluginsList()) pref.key?.let { plugin.updatePreferenceSummary(pref) }
     }
 
-    private fun initSummary(p: Preference, isSinglePreference: Boolean) {
-        p.isIconSpaceReserved = false // remove extra spacing on left after migration to androidx
+    private fun initSummary(p: Preference?, isSinglePreference: Boolean) {
+        p?.isIconSpaceReserved = false // remove extra spacing on left after migration to androidx
         // expand single plugin preference by default
         if (p is PreferenceScreen && isSinglePreference && p.size > 0 && p.getPreference(0) is PreferenceCategory)
             (p.getPreference(0) as PreferenceCategory).initialExpandedChildrenCount = Int.MAX_VALUE

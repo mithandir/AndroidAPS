@@ -5,7 +5,7 @@
     <string name="temp_target_short">GH</string>
     <string name="dialog_canceled">İletişim kutusu iptal edildi</string>
     <string name="start_activity_tt">Egzersiz Başlat GH</string>
-    <string name="start_eating_soon_tt">Yakında Öğün GH</string>
+    <string name="start_eating_soon_tt">Yakında Yemek GH</string>
     <string name="start_hypo_tt">Hipo GH başlat</string>
     <string name="time_offset">Saat farkı</string>
     <string name="unit_minute_short">dk.</string>
@@ -134,6 +134,9 @@
     <string name="change_your_input">Girişinizi değiştirin!</string>
     <string name="confirm_treatment">Lütfen tedaviyi onaylayın</string>
     <string name="recalculate">Tekrar Hesapla</string>
+    <!--    Widget-->
+    <string name="use_black_color">Siyah renk kullanın</string>
+    <string name="widget_configuration">Araç yapılandırması</string>
     <string-array name="yes_no_positiveonly_negativeonly">
         <item>İkisi de</item>
         <item>Sadece pozitif</item>
