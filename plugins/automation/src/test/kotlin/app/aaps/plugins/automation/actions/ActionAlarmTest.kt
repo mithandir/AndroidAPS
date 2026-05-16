@@ -1,16 +1,16 @@
 package app.aaps.plugins.automation.actions
 
-import app.aaps.core.interfaces.queue.Callback
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.elements.InputString
-import app.aaps.plugins.automation.ui.TimerUtil
+import app.aaps.plugins.automation.TimerUtil
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers
-import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
+import org.mockito.kotlin.whenever
 import org.skyscreamer.jsonassert.JSONAssert
 
 class ActionAlarmTest : TestBaseWithProfile() {
@@ -27,51 +27,44 @@ class ActionAlarmTest : TestBaseWithProfile() {
                 it.timerUtil = timerUtil
                 it.dateUtil = dateUtil
                 it.config = config
-                it.instantiator = instantiator
+                it.pumpEnactResultProvider = pumpEnactResultProvider
             }
         }
     }
 
     @BeforeEach
     fun setup() {
-        `when`(rh.gs(app.aaps.core.ui.R.string.alarm)).thenReturn("Alarm")
-        `when`(rh.gs(ArgumentMatchers.eq(R.string.alarm_message), any())).thenReturn("Alarm: %s")
-        timerUtil = TimerUtil(context)
+        whenever(rh.gs(app.aaps.core.ui.R.string.alarm)).thenReturn("Alarm")
+        whenever(rh.gs(ArgumentMatchers.eq(R.string.alarm_message), any())).thenReturn("Alarm: %s")
+        timerUtil = TimerUtil(context, rh, rxBus)
         sut = ActionAlarm(injector)
     }
 
-    @Test fun friendlyNameTest() {
+    @Test fun friendlyNameTest() = runTest {
         assertThat(sut.friendlyName()).isEqualTo(app.aaps.core.ui.R.string.alarm)
     }
 
-    @Test fun shortDescriptionTest() {
+    @Test fun shortDescriptionTest() = runTest {
         sut.text = InputString("Asd")
         assertThat(sut.shortDescription()).isEqualTo("Alarm: %s")
     }
 
-    @Test fun iconTest() {
-        assertThat(sut.icon()).isEqualTo(app.aaps.core.objects.R.drawable.ic_access_alarm_24dp)
-    }
-
-    @Test fun doActionTest() {
+    @Test fun doActionTest() = runTest {
         sut.text = InputString("Asd")
-        sut.doAction(object : Callback() {
-            override fun run() {
-                assertThat(result.success).isTrue()
-            }
-        })
+        val result = sut.doAction()
+        assertThat(result.success).isTrue()
     }
 
-    @Test fun hasDialogTest() {
+    @Test fun hasDialogTest() = runTest {
         assertThat(sut.hasDialog()).isTrue()
     }
 
-    @Test fun toJSONTest() {
+    @Test fun toJSONTest() = runTest {
         sut.text = InputString("Asd")
         JSONAssert.assertEquals("""{"data":{"text":"Asd"},"type":"ActionAlarm"}""", sut.toJSON(), true)
     }
 
-    @Test fun fromJSONTest() {
+    @Test fun fromJSONTest() = runTest {
         sut.text = InputString("Asd")
         sut.fromJSON("""{"text":"Asd"}""")
         assertThat(sut.text.value).isEqualTo("Asd")

@@ -1,25 +1,33 @@
 package app.aaps.plugins.configuration.setupwizard
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.plugins.configuration.setupwizard.elements.SWItem
-import dagger.android.HasAndroidInjector
 import javax.inject.Inject
 
-class SWScreen(val injector: HasAndroidInjector, private var header: Int) {
+class SWScreen @Inject constructor(private val rh: ResourceHelper) {
 
-    @Inject lateinit var rh: ResourceHelper
+    var header: Int = 0
+        private set
 
     var items: MutableList<SWItem> = ArrayList()
     var validator: (() -> Boolean)? = null
     var visibility: (() -> Boolean)? = null
     var skippable = false
 
-    init {
-        injector.androidInjector().inject(this)
+    fun with(header: Int): SWScreen {
+        this.header = header
+        return this
     }
 
     fun getHeader(): String {
         return rh.gs(header)
+    }
+
+    @Composable
+    fun getHeaderCompose(): String {
+        return stringResource(header)
     }
 
     fun skippable(skippable: Boolean): SWScreen {
@@ -42,7 +50,10 @@ class SWScreen(val injector: HasAndroidInjector, private var header: Int) {
         return this
     }
 
-    fun processVisibility() {
-        for (i in items) i.processVisibility()
+    @Composable
+    fun Compose() {
+        items.forEach { item ->
+            item.Compose()
+        }
     }
 }

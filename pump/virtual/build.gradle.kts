@@ -1,14 +1,18 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.ksp)
-    id("kotlin-android")
     id("android-module-dependencies")
     id("test-module-dependencies")
     id("jacoco-module-dependencies")
+    alias(libs.plugins.compose.compiler)
 }
 
 android {
     namespace = "app.aaps.pump.virtual"
+
+    buildFeatures {
+        compose = true
+    }
 }
 
 dependencies {
@@ -18,10 +22,16 @@ dependencies {
     implementation(project(":core:objects"))
     implementation(project(":core:ui"))
     implementation(project(":core:utils"))
-    implementation(project(":core:validators"))
 
     testImplementation(project(":shared:tests"))
 
     ksp(libs.com.google.dagger.compiler)
+    ksp(libs.com.google.dagger.hilt.compiler)
     ksp(libs.com.google.dagger.android.processor)
+
+    // compose dependencies
+    api(platform(libs.androidx.compose.bom))
+
+    api(libs.androidx.ui)
+    api(libs.androidx.ui.tooling)
 }

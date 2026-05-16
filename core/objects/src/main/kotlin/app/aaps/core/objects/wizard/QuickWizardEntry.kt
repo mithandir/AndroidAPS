@@ -15,25 +15,40 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.valueToUnits
+import app.aaps.core.utils.JsonHelper.safeGetDouble
 import app.aaps.core.utils.JsonHelper.safeGetInt
+import app.aaps.core.utils.JsonHelper.safeGetLong
 import app.aaps.core.utils.JsonHelper.safeGetString
 import app.aaps.core.utils.MidnightUtils
-import dagger.android.HasAndroidInjector
 import org.json.JSONException
 import org.json.JSONObject
 import java.util.UUID
 import javax.inject.Inject
+import javax.inject.Provider
 
-class QuickWizardEntry @Inject constructor(private val injector: HasAndroidInjector) {
+enum class QuickWizardMode(val value: Int) {
+    WIZARD(0),
+    INSULIN(1),
+    CARBS(2);
 
-    @Inject lateinit var aapsLogger: AAPSLogger
-    @Inject lateinit var preferences: Preferences
-    @Inject lateinit var profileFunction: ProfileFunction
-    @Inject lateinit var loop: Loop
-    @Inject lateinit var iobCobCalculator: IobCobCalculator
-    @Inject lateinit var persistenceLayer: PersistenceLayer
-    @Inject lateinit var dateUtil: DateUtil
-    @Inject lateinit var glucoseStatusProvider: GlucoseStatusProvider
+    companion object {
+
+        fun fromValue(value: Int) = entries.firstOrNull { it.value == value } ?: WIZARD
+    }
+}
+
+class QuickWizardEntry @Inject constructor(
+    aapsLogger: AAPSLogger,
+    private val preferences: Preferences,
+    private val profileFunction: ProfileFunction,
+    private val loop: Loop,
+    private val iobCobCalculator: IobCobCalculator,
+    private val persistenceLayer: PersistenceLayer,
+    private val dateUtil: DateUtil,
+    private val glucoseStatusProvider: GlucoseStatusProvider,
+    private val bolusWizardProvider: Provider<BolusWizard>,
+    private val quickWizardProvider: Provider<QuickWizard>
+) {
 
     // for mock
     @OpenForTesting
@@ -59,10 +74,10 @@ class QuickWizardEntry @Inject constructor(private val injector: HasAndroidInjec
         const val DEVICE_WATCH = 2
         const val DEFAULT = 0
         const val CUSTOM = 1
+        const val COOLDOWN_MILLIS = 1_800_000L // 1/2 hour
     }
 
     init {
-        injector.androidInjector().inject(this)
         val guid = UUID.randomUUID().toString()
         val emptyData = """{
                 "guid": "$guid",
@@ -107,9 +122,18 @@ class QuickWizardEntry @Inject constructor(private val injector: HasAndroidInjec
         return this
     }
 
-    fun isActive(): Boolean = time.secondsFromMidnight() >= validFrom() && time.secondsFromMidnight() <= validTo() && forDevice(DEVICE_PHONE)
+    fun isActive(): Boolean {
+        val now = time.secondsFromMidnight()
+        val inTimeRange = if (validTo() >= validFrom()) now in validFrom()..validTo()
+        else now >= validFrom() || now <= validTo() // wraps midnight
+        if (!inTimeRange || !forDevice(DEVICE_PHONE)) return false
+        val timeRangeSeconds = if (validTo() >= validFrom()) validTo() - validFrom()
+        else (86400 - validFrom()) + validTo()
+        val needsCooldown = timeRangeSeconds < 4 * 3600
+        return !needsCooldown || (dateUtil.now() - lastUsed() > COOLDOWN_MILLIS)
+    }
 
-    fun doCalc(profile: Profile, profileName: String, lastBG: InMemoryGlucoseValue): BolusWizard {
+    suspend fun doCalc(profile: Profile, profileName: String, lastBG: InMemoryGlucoseValue): BolusWizard {
         val tempTarget = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
         //BG
         var bg = 0.0
@@ -135,7 +159,7 @@ class QuickWizardEntry @Inject constructor(private val injector: HasAndroidInjec
         if (useSuperBolus() == YES && preferences.get(BooleanKey.OverviewUseSuperBolus)) {
             superBolus = true
         }
-        if (loop.runningMode == RM.Mode.SUPER_BOLUS) superBolus = false
+        if (loop.runningMode() == RM.Mode.SUPER_BOLUS) superBolus = false
         // Trend
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
         var trend = false
@@ -147,7 +171,7 @@ class QuickWizardEntry @Inject constructor(private val injector: HasAndroidInjec
             trend = true
         }
         val percentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()
-        return BolusWizard(injector).doCalc(
+        return bolusWizardProvider.get().doCalc(
             profile,
             profileName,
             tempTarget,
@@ -171,6 +195,10 @@ class QuickWizardEntry @Inject constructor(private val injector: HasAndroidInjec
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
     }
 
+    fun mode(): QuickWizardMode = QuickWizardMode.fromValue(safeGetInt(storage, "mode", 0))
+
+    fun insulin(): Double = safeGetDouble(storage, "insulin", 0.0)
+
     fun guid(): String = safeGetString(storage, "guid", "")
 
     fun device(): Int = safeGetInt(storage, "device", DEVICE_ALL)
@@ -180,10 +208,6 @@ class QuickWizardEntry @Inject constructor(private val injector: HasAndroidInjec
     fun buttonText(): String = safeGetString(storage, "buttonText", "")
 
     fun carbs(): Int = safeGetInt(storage, "carbs")
-
-    fun validFromDate(): Long = dateUtil.secondsOfTheDayToMilliseconds(validFrom())
-
-    fun validToDate(): Long = dateUtil.secondsOfTheDayToMilliseconds(validTo())
 
     fun validFrom(): Int = safeGetInt(storage, "validFrom")
 
@@ -218,4 +242,11 @@ class QuickWizardEntry @Inject constructor(private val injector: HasAndroidInjec
     fun carbTime(): Int = safeGetInt(storage, "carbTime")
 
     fun useAlarm(): Int = safeGetInt(storage, "useAlarm", NO)
+
+    fun lastUsed(): Long = safeGetLong(storage, "lastUsed")
+
+    fun markAsUsed() {
+        storage.put("lastUsed", dateUtil.now())
+        quickWizardProvider.get().save()
+    }
 }

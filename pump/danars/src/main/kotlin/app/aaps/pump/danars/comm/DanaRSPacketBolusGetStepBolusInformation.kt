@@ -1,18 +1,19 @@
 package app.aaps.pump.danars.comm
 
+import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.pump.dana.DanaPump
-import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.danars.encryption.BleEncryption
+import app.aaps.pump.danars.encryption.BleEncryption
 import org.joda.time.DateTime
 import org.joda.time.DateTimeZone
 import javax.inject.Inject
 
-class DanaRSPacketBolusGetStepBolusInformation(
-    injector: HasAndroidInjector
-) : DanaRSPacket(injector) {
-
-    @Inject lateinit var danaPump: DanaPump
+class DanaRSPacketBolusGetStepBolusInformation @Inject constructor(
+    private val aapsLogger: AAPSLogger,
+    private val dateUtil: DateUtil,
+    private val danaPump: DanaPump
+) : DanaRSPacket() {
 
     init {
         opCode = BleEncryption.DANAR_PACKET__OPCODE_BOLUS__GET_STEP_BOLUS_INFORMATION
@@ -34,7 +35,7 @@ class DanaRSPacketBolusGetStepBolusInformation(
         aapsLogger.debug(LTag.PUMPCOMM, "Result: $error")
         aapsLogger.debug(LTag.PUMPCOMM, "BolusType: $bolusType")
         aapsLogger.debug(LTag.PUMPCOMM, "Initial bolus amount: " + danaPump.initialBolusAmount + " U")
-        aapsLogger.debug(LTag.PUMPCOMM, "Last bolus time: " + dateUtil.dateAndTimeString(danaPump.lastBolusTime))
+        aapsLogger.debug(LTag.PUMPCOMM, "Last bolus time: " + dateUtil.dateAndTimeStringNullable(danaPump.lastBolusTime))
         aapsLogger.debug(LTag.PUMPCOMM, "Last bolus amount: " + danaPump.lastBolusAmount)
         aapsLogger.debug(LTag.PUMPCOMM, "Max bolus: " + danaPump.maxBolus + " U")
         aapsLogger.debug(LTag.PUMPCOMM, "Bolus step: " + danaPump.bolusStep + " U")

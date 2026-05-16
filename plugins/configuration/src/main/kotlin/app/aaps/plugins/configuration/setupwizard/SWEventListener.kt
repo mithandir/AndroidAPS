@@ -1,42 +1,39 @@
 package app.aaps.plugins.configuration.setupwizard
 
-import android.annotation.SuppressLint
-import android.content.Context
-import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
-import app.aaps.core.interfaces.rx.AapsSchedulers
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.protection.PasswordCheck
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventStatus
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.configuration.setupwizard.elements.SWItem
-import dagger.android.HasAndroidInjector
-import io.reactivex.rxjava3.disposables.CompositeDisposable
-import io.reactivex.rxjava3.kotlin.plusAssign
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import javax.inject.Inject
 
-class SWEventListener(
-    injector: HasAndroidInjector,
-    clazz: Class<out EventStatus>
-) : SWItem(injector, Type.LISTENER) {
+class SWEventListener @Inject constructor(
+    aapsLogger: AAPSLogger,
+    rh: ResourceHelper,
+    rxBus: RxBus,
+    preferences: Preferences,
+    passwordCheck: PasswordCheck
+) : SWItem(aapsLogger, rh, rxBus, preferences, passwordCheck) {
 
-    private val disposable = CompositeDisposable()
     private var textLabel = 0
     private var status = ""
-    private var textView: TextView? = null
     private var visibilityValidator: (() -> Boolean)? = null
 
-    @Inject lateinit var aapsSchedulers: AapsSchedulers
-    @Inject lateinit var context: Context
+    lateinit var clazz: Class<out EventStatus>
 
-    // TODO: Adrian how to clear disposable in this case?
-    init {
-        disposable += rxBus
-            .toObservable(clazz)
-            .observeOn(aapsSchedulers.main)
-            .subscribe { event: Any ->
-                status = (event as EventStatus).getStatus(context)
-                @SuppressLint("SetTextI18n")
-                textView?.text = (if (textLabel != 0) rh.gs(textLabel) else "") + " " + status
-            }
+    fun with(clazz: Class<out EventStatus>): SWEventListener {
+        this.clazz = clazz
+        return this
     }
 
     override fun label(label: Int): SWEventListener {
@@ -54,16 +51,21 @@ class SWEventListener(
         return this
     }
 
-    @SuppressLint("SetTextI18n")
-    override fun generateDialog(layout: LinearLayout) {
-        val context = layout.context
-        textView = TextView(context)
-        textView?.id = View.generateViewId()
-        textView?.text = (if (textLabel != 0) rh.gs(textLabel) else "") + " " + status
-        layout.addView(textView)
-    }
-
-    override fun processVisibility() {
-        if (visibilityValidator?.invoke() == false) textView?.visibility = View.GONE else textView?.visibility = View.VISIBLE
+    @Composable
+    override fun Compose() {
+        if (visibilityValidator?.invoke() == false) return
+        val context = LocalContext.current
+        val statusState = remember { mutableStateOf(status) }
+        DisposableEffect(clazz) {
+            val disposable = rxBus
+                .toObservable(clazz)
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe { event ->
+                    statusState.value = event.getStatus(context)
+                }
+            onDispose { disposable.dispose() }
+        }
+        val labelText = if (textLabel != 0) stringResource(textLabel) else ""
+        Text(text = "$labelText ${statusState.value}".trim())
     }
 }

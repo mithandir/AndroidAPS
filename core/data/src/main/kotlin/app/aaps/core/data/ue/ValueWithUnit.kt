@@ -21,6 +21,8 @@ sealed class ValueWithUnit {          //I use a sealed class because of StringRe
 
     data class Insulin(val value: Double) : ValueWithUnit()
 
+    data class InsulinConcentration(val value: Int) : ValueWithUnit() // formerly one usage of None
+
     data class UnitPerHour(val value: Double) : ValueWithUnit()
 
     data class Gram(val value: Int) : ValueWithUnit()
@@ -34,6 +36,10 @@ sealed class ValueWithUnit {          //I use a sealed class because of StringRe
     data class TEType(val value: TE.Type) : ValueWithUnit()
 
     data class TEMeterType(val value: TE.MeterType) : ValueWithUnit()
+
+    data class TELocation(val value: TE.Location) : ValueWithUnit()
+
+    data class TEArrow(val value: TE.Arrow) : ValueWithUnit()
 
     data class TETTReason(val value: TT.Reason) : ValueWithUnit()
 

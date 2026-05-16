@@ -13,7 +13,7 @@ class CgmSourceTransaction(
     private val sensorInsertionTime: Long?
 ) : Transaction<CgmSourceTransaction.TransactionResult>() {
 
-    override fun run(): TransactionResult {
+    override suspend fun run(): TransactionResult {
         val result = TransactionResult()
         glucoseValues.forEach { glucoseValue ->
             val current = database.glucoseValueDao.findByTimestampAndSensor(glucoseValue.timestamp, glucoseValue.sourceSensor)
@@ -56,10 +56,12 @@ class CgmSourceTransaction(
         }
         sensorInsertionTime?.let {
             if (database.therapyEventDao.findByTimestamp(TherapyEvent.Type.SENSOR_CHANGE, it) == null) {
+                val location = null
                 val therapyEvent = TherapyEvent(
                     timestamp = it,
                     type = TherapyEvent.Type.SENSOR_CHANGE,
-                    glucoseUnit = GlucoseUnit.MGDL
+                    glucoseUnit = GlucoseUnit.MGDL,
+                    location = location
                 )
                 database.therapyEventDao.insertNewEntry(therapyEvent)
                 result.sensorInsertionsInserted.add(therapyEvent)

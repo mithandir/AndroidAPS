@@ -2,17 +2,8 @@ package app.aaps.pump.common.hw.rileylink.service.tasks
 
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkPumpDevice
-import dagger.android.HasAndroidInjector
-import javax.inject.Inject
 
-@Suppress("LeakingThis")
-open class ServiceTask(val injector: HasAndroidInjector) : Runnable {
-
-    @Inject lateinit var activePlugin: ActivePlugin
-
-    init {
-        injector.androidInjector().inject(this)
-    }
+open class ServiceTask(val activePlugin: ActivePlugin) : Runnable {
 
     override fun run() {}
 
@@ -23,9 +14,9 @@ open class ServiceTask(val injector: HasAndroidInjector) : Runnable {
     fun postOp() {}
 
     val isRileyLinkDevice: Boolean
-        get() = activePlugin.activePump is RileyLinkPumpDevice
+        get() = activePlugin.activePumpInternal is RileyLinkPumpDevice
 
     val pumpDevice: RileyLinkPumpDevice?
-        get() = if (isRileyLinkDevice) activePlugin.activePump as RileyLinkPumpDevice else null
+        get() = if (isRileyLinkDevice) activePlugin.activePumpInternal as RileyLinkPumpDevice else null
 
 }

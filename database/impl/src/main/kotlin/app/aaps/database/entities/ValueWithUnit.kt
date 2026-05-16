@@ -16,6 +16,8 @@ sealed class ValueWithUnit {
 
     data class Insulin(val value: Double) : ValueWithUnit()
 
+    data class InsulinConcentration(val value: Int) : ValueWithUnit()
+
     data class UnitPerHour(val value: Double) : ValueWithUnit()
 
     data class Gram(val value: Int) : ValueWithUnit()
@@ -30,6 +32,10 @@ sealed class ValueWithUnit {
 
     data class TherapyEventMeterType(val value: TherapyEvent.MeterType) : ValueWithUnit()
 
+    data class TherapyEventArrow(val value: TherapyEvent.Arrow) : ValueWithUnit()
+
+    data class TherapyEventLocation(val value: TherapyEvent.Location) : ValueWithUnit()
+
     data class TherapyEventTTReason(val value: TemporaryTarget.Reason) : ValueWithUnit()
 
     data class RunningModeMode(val value: RunningMode.Mode) : ValueWithUnit()
@@ -39,6 +45,7 @@ sealed class ValueWithUnit {
             is Gram                  -> this.value
             is Hour                  -> this.value
             is Insulin               -> this.value
+            is InsulinConcentration  -> this.value
             is Mgdl                  -> this.value
             is Minute                -> this.value
             is Mmoll                 -> this.value
@@ -47,10 +54,12 @@ sealed class ValueWithUnit {
             is SimpleString          -> this.value
             is TherapyEventMeterType -> this.value
             is TherapyEventTTReason  -> this.value
-            is RunningModeMode    -> this.value
+            is RunningModeMode       -> this.value
             is TherapyEventType      -> this.value
             is Timestamp             -> this.value
             is UnitPerHour           -> this.value
+            is TherapyEventArrow     -> this.value
+            is TherapyEventLocation  -> this.value
             UNKNOWN                  -> null
         }
     }

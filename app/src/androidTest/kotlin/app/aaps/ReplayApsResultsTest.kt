@@ -2,11 +2,11 @@ package app.aaps
 
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.rule.GrantPermissionRule
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
-import app.aaps.core.interfaces.aps.GlucoseStatus
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
+import app.aaps.core.interfaces.aps.GlucoseStatusSMB
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.MealData
 import app.aaps.core.interfaces.aps.OapsProfile
@@ -36,7 +36,6 @@ import com.google.common.truth.Truth.assertThat
 import dagger.android.HasAndroidInjector
 import org.json.JSONObject
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.skyscreamer.jsonassert.Customization
 import org.skyscreamer.jsonassert.JSONAssert
@@ -60,9 +59,6 @@ class ReplayApsResultsTest @Inject constructor() {
     @Inject lateinit var preferences: Preferences
 
     private val context = ApplicationProvider.getApplicationContext<TestApplication>()
-
-    @get:Rule
-    var runtimePermissionRule = GrantPermissionRule.grant(android.Manifest.permission.READ_EXTERNAL_STORAGE)!!
 
     private var ktTime = 0L
     private var jsTime = 0L
@@ -146,7 +142,7 @@ class ReplayApsResultsTest @Inject constructor() {
             preferences.put(StringKey.GeneralUnits, GlucoseUnit.MGDL.asText)
 
         val startKt = System.currentTimeMillis()
-        val glucoseStatus = GlucoseStatus(
+        val glucoseStatus = GlucoseStatusSMB(
             glucose = determineBasalResult.glucoseStatus.getDouble("glucose"),
             noise = determineBasalResult.glucoseStatus.getDouble("noise"),
             delta = determineBasalResult.glucoseStatus.getDouble("delta"),
@@ -310,7 +306,7 @@ class ReplayApsResultsTest @Inject constructor() {
             preferences.put(StringKey.GeneralUnits, GlucoseUnit.MGDL.asText)
 
         val startKt = System.currentTimeMillis()
-        val glucoseStatus = GlucoseStatus(
+        val glucoseStatus = GlucoseStatusSMB(
             glucose = determineBasalResult.glucoseStatus.getDouble("glucose"),
             noise = determineBasalResult.glucoseStatus.getDouble("noise"),
             delta = determineBasalResult.glucoseStatus.getDouble("delta"),
@@ -469,7 +465,7 @@ class ReplayApsResultsTest @Inject constructor() {
             preferences.put(StringKey.GeneralUnits, GlucoseUnit.MGDL.asText)
 
         val startKt = System.currentTimeMillis()
-        val glucoseStatus = GlucoseStatus(
+        val glucoseStatus = GlucoseStatusSMB(
             glucose = determineBasalResult.glucoseStatus.getDouble("glucose"),
             noise = 0.0,
             delta = determineBasalResult.glucoseStatus.getDouble("delta"),
@@ -627,7 +623,7 @@ class ReplayApsResultsTest @Inject constructor() {
             preferences.put(StringKey.GeneralUnits, GlucoseUnit.MGDL.asText)
 
         val startKt = System.currentTimeMillis()
-        val glucoseStatus = GlucoseStatus(
+        val glucoseStatus = GlucoseStatusAutoIsf(
             glucose = determineBasalResult.glucoseStatus.getDouble("glucose"),
             noise = determineBasalResult.glucoseStatus.getDouble("noise"),
             delta = determineBasalResult.glucoseStatus.getDouble("delta"),

@@ -1,15 +1,20 @@
 package app.aaps.plugins.configuration.setupwizard.elements
 
-import android.widget.Button
-import android.widget.LinearLayout
-import dagger.android.HasAndroidInjector
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.protection.PasswordCheck
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.keys.interfaces.Preferences
+import javax.inject.Inject
 
-class SWButton(injector: HasAndroidInjector) : SWItem(injector, Type.BUTTON) {
+class SWButton @Inject constructor(aapsLogger: AAPSLogger, rh: ResourceHelper, rxBus: RxBus, preferences: Preferences, passwordCheck: PasswordCheck) : SWItem(aapsLogger, rh, rxBus, preferences, passwordCheck) {
 
     private var buttonRunnable: Runnable? = null
     private var buttonText = 0
     private var buttonValidator: (() -> Boolean)? = null
-    private var button: Button? = null
 
     fun text(buttonText: Int): SWButton {
         this.buttonText = buttonText
@@ -26,23 +31,14 @@ class SWButton(injector: HasAndroidInjector) : SWItem(injector, Type.BUTTON) {
         return this
     }
 
-    override fun generateDialog(layout: LinearLayout) {
-        val context = layout.context
-        button = Button(context)
-        button?.setText(buttonText)
-        button?.setOnClickListener { buttonRunnable?.run() }
-        processVisibility()
-        layout.addView(button)
-        super.generateDialog(layout)
-    }
-
-    override fun processVisibility() {
-        if (buttonValidator?.invoke() == false) {
-            button?.isEnabled = false
-            button?.alpha = .5f
-        } else {
-            button?.isEnabled = true
-            button?.alpha = 1f
+    @Composable
+    override fun Compose() {
+        val enabled = buttonValidator?.invoke() != false
+        androidx.compose.material3.Button(
+            onClick = { buttonRunnable?.run() },
+            enabled = enabled
+        ) {
+            Text(text = stringResource(buttonText))
         }
     }
 }

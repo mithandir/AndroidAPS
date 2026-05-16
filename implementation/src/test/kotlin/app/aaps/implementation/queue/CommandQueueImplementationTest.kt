@@ -3,33 +3,31 @@ package app.aaps.implementation.queue
 import android.content.Context
 import android.os.Handler
 import android.os.PowerManager
-import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.TestListenableWorkerBuilder
 import app.aaps.core.data.model.BS
-import app.aaps.core.interfaces.androidPermissions.AndroidPermission
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.objects.Instantiator
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.Command
 import app.aaps.core.interfaces.queue.CustomCommand
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
-import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.implementation.queue.commands.CommandBolus
 import app.aaps.implementation.queue.commands.CommandCancelExtendedBolus
@@ -48,54 +46,62 @@ import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
 import com.google.common.util.concurrent.ListenableFuture
 import dagger.android.HasAndroidInjector
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.anyLong
+import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mock
-import org.mockito.Mockito
-import org.mockito.Mockito.anyLong
-import org.mockito.Mockito.doAnswer
-import org.mockito.Mockito.mock
 import org.mockito.invocation.InvocationOnMock
-import org.mockito.stubbing.Answer
+import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.doAnswer
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import java.util.Calendar
+import javax.inject.Provider
 
 class CommandQueueImplementationTest : TestBaseWithProfile() {
 
     @Mock lateinit var constraintChecker: ConstraintsChecker
     @Mock lateinit var powerManager: PowerManager
     @Mock lateinit var uiInteraction: UiInteraction
-    @Mock lateinit var androidPermission: AndroidPermission
     @Mock lateinit var persistenceLayer: PersistenceLayer
     @Mock lateinit var jobName: CommandQueueName
     @Mock lateinit var workManager: WorkManager
     @Mock lateinit var infos: ListenableFuture<List<WorkInfo>>
 
+    private val testScope = CoroutineScope(Dispatchers.Unconfined)
+    private val bolusProgressData by lazy { BolusProgressData(ch, rh) }
+
     class CommandQueueMocked(
         injector: HasAndroidInjector,
         aapsLogger: AAPSLogger,
         rxBus: RxBus,
-        aapsSchedulers: AapsSchedulers,
         rh: ResourceHelper,
         constraintChecker: ConstraintsChecker,
         profileFunction: ProfileFunction,
         activePlugin: ActivePlugin,
-        context: Context,
-        preferences: Preferences,
         config: Config,
         dateUtil: DateUtil,
         fabricPrivacy: FabricPrivacy,
-        androidPermission: AndroidPermission,
         uiInteraction: UiInteraction,
+        notificationManager: NotificationManager,
         persistenceLayer: PersistenceLayer,
         decimalFormatter: DecimalFormatter,
-        instantiator: Instantiator,
+        pumpEnactResultProvider: Provider<PumpEnactResult>,
         jobName: CommandQueueName,
-        workManager: WorkManager
+        workManager: WorkManager,
+        appScope: CoroutineScope,
+        bolusProgressData: BolusProgressData
     ) : CommandQueueImplementation(
-        injector, aapsLogger, rxBus, aapsSchedulers, rh, constraintChecker, profileFunction,
-        activePlugin, context, preferences, config, dateUtil, fabricPrivacy, androidPermission,
-        uiInteraction, persistenceLayer, decimalFormatter, instantiator, jobName, workManager
+        injector, aapsLogger, rxBus, rh, constraintChecker, profileFunction,
+        activePlugin, config, dateUtil, fabricPrivacy,
+        uiInteraction, notificationManager, persistenceLayer, decimalFormatter, pumpEnactResultProvider, jobName, workManager, appScope, bolusProgressData
     ) {
 
         override fun notifyAboutNewCommand(): Boolean = true
@@ -123,12 +129,13 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
                 it.aapsLogger = aapsLogger
                 it.rh = rh
                 it.activePlugin = activePlugin
-                it.rxBus = rxBus
+                it.bolusProgressData = bolusProgressData
             }
             if (it is CommandSMBBolus) {
                 it.aapsLogger = aapsLogger
                 it.rh = rh
                 it.activePlugin = activePlugin
+                it.bolusProgressData = bolusProgressData
             }
             if (it is CommandCustomCommand) {
                 it.aapsLogger = aapsLogger
@@ -178,8 +185,8 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
                 it.activePlugin = activePlugin
                 it.rh = rh
                 it.preferences = preferences
-                it.androidPermission = androidPermission
                 it.config = config
+                it.bolusProgressData = bolusProgressData
             }
         }
     }
@@ -188,57 +195,61 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
 
     @BeforeEach
     fun prepare() {
-        commandQueue = CommandQueueMocked(
-            injector, aapsLogger, rxBus, aapsSchedulers, rh, constraintChecker, profileFunction, activePlugin, context,
-            preferences, config, dateUtil, fabricPrivacy, androidPermission, uiInteraction, persistenceLayer, decimalFormatter, instantiator, jobName, workManager
-        )
-        testPumpPlugin.pumpDescription.basalMinimumRate = 0.1
-        testPumpPlugin.connected = true
-
-        Mockito.`when`(context.getSystemService(Context.POWER_SERVICE)).thenReturn(powerManager)
-        Mockito.`when`(activePlugin.activePump).thenReturn(testPumpPlugin)
-        Mockito.`when`(persistenceLayer.getEffectiveProfileSwitchActiveAt(anyLong())).thenReturn(effectiveProfileSwitch)
-        Mockito.`when`(persistenceLayer.getNewestBolus()).thenReturn(
-            BS(
-                timestamp = Calendar.getInstance().also { it.set(2000, 0, 1) }.timeInMillis,
-                type = BS.Type.NORMAL,
-                amount = 0.0
+        runTest {
+            whenever(persistenceLayer.observeChanges(anyOrNull<Class<*>>())).thenReturn(emptyFlow())
+            commandQueue = CommandQueueMocked(
+                injector, aapsLogger, rxBus, rh, constraintChecker, profileFunction, activePlugin,
+                config, dateUtil, fabricPrivacy, uiInteraction, notificationManager, persistenceLayer, decimalFormatter, pumpEnactResultProvider, jobName, workManager, testScope, bolusProgressData
             )
-        )
-        Mockito.`when`(profileFunction.getProfile()).thenReturn(validProfile)
+            testPumpPlugin.pumpDescription.basalMinimumRate = 0.1
+            testPumpPlugin.connected = true
 
-        val bolusConstraint = ConstraintObject(0.0, aapsLogger)
-        Mockito.`when`(constraintChecker.applyBolusConstraints(anyObject())).thenReturn(bolusConstraint)
-        Mockito.`when`(constraintChecker.applyExtendedBolusConstraints(anyObject())).thenReturn(bolusConstraint)
-        val carbsConstraint = ConstraintObject(0, aapsLogger)
-        Mockito.`when`(constraintChecker.applyCarbsConstraints(anyObject())).thenReturn(carbsConstraint)
-        val rateConstraint = ConstraintObject(0.0, aapsLogger)
-        Mockito.`when`(constraintChecker.applyBasalConstraints(anyObject(), anyObject())).thenReturn(rateConstraint)
-        val percentageConstraint = ConstraintObject(0, aapsLogger)
-        Mockito.`when`(constraintChecker.applyBasalPercentConstraints(anyObject(), anyObject())).thenReturn(percentageConstraint)
-        Mockito.`when`(rh.gs(app.aaps.core.ui.R.string.connectiontimedout)).thenReturn("Connection timed out")
-        Mockito.`when`(rh.gs(app.aaps.core.ui.R.string.format_insulin_units)).thenReturn("%1\$.2f U")
-        Mockito.`when`(rh.gs(app.aaps.core.ui.R.string.goingtodeliver)).thenReturn("Going to deliver %1\$.2f U")
-        Mockito.`when`(workManager.getWorkInfosForUniqueWork(anyObject())).thenReturn(infos)
-        doAnswer(Answer { invocation: InvocationOnMock ->
-            Thread {
-                val work = TestListenableWorkerBuilder<QueueWorker>(context).build()
-                runBlocking { work.doWorkAndLog() }
-            }.start()
-            null
-        } as Answer<*>).`when`(workManager).enqueueUniqueWork(anyObject<String>(), anyObject<ExistingWorkPolicy>(), anyObject<OneTimeWorkRequest>())
-        Mockito.`when`(infos.get()).thenReturn(emptyList<WorkInfo>())
+            whenever(context.getSystemService(Context.POWER_SERVICE)).thenReturn(powerManager)
+            whenever(activePlugin.activePump).thenReturn(testPumpPlugin)
+            whenever(persistenceLayer.getEffectiveProfileSwitchActiveAt(anyLong())).thenReturn(effectiveProfileSwitch)
+            whenever(persistenceLayer.getNewestBolus()).thenReturn(
+                BS(
+                    timestamp = Calendar.getInstance().also { it.set(2000, 0, 1) }.timeInMillis,
+                    type = BS.Type.NORMAL,
+                    amount = 0.0,
+                    iCfg = someICfg
+                )
+            )
+            whenever(profileFunction.getProfile()).thenReturn(effectiveProfile)
+
+            val bolusConstraint = ConstraintObject(0.0, aapsLogger)
+            whenever(constraintChecker.applyBolusConstraints(anyOrNull())).thenReturn(bolusConstraint)
+            whenever(constraintChecker.applyExtendedBolusConstraints(anyOrNull())).thenReturn(bolusConstraint)
+            val carbsConstraint = ConstraintObject(0, aapsLogger)
+            whenever(constraintChecker.applyCarbsConstraints(anyOrNull())).thenReturn(carbsConstraint)
+            val rateConstraint = ConstraintObject(0.0, aapsLogger)
+            whenever(constraintChecker.applyBasalConstraints(anyOrNull(), anyOrNull())).thenReturn(rateConstraint)
+            val percentageConstraint = ConstraintObject(0, aapsLogger)
+            whenever(constraintChecker.applyBasalPercentConstraints(anyOrNull(), anyOrNull())).thenReturn(percentageConstraint)
+            whenever(rh.gs(app.aaps.core.ui.R.string.connectiontimedout)).thenReturn("Connection timed out")
+            whenever(rh.gs(eq(app.aaps.core.ui.R.string.format_insulin_units), anyOrNull())).thenReturn("%1\$.2f U")
+            whenever(rh.gs(app.aaps.core.ui.R.string.goingtodeliver)).thenReturn("Going to deliver %1\$.2f U")
+            whenever(workManager.getWorkInfosForUniqueWork(anyOrNull())).thenReturn(infos)
+            doAnswer { _: InvocationOnMock ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    val work = TestListenableWorkerBuilder<QueueWorker>(context).build()
+                    work.doWorkAndLog()
+                }
+                null
+            }.whenever(workManager).enqueueUniqueWork(anyOrNull(), anyOrNull(), any<OneTimeWorkRequest>())
+            whenever(infos.get()).thenReturn(emptyList())
+        }
     }
 
     @Test
     fun commandIsPickedUp() {
         commandQueue = CommandQueueImplementation(
-            injector, aapsLogger, rxBus, aapsSchedulers, rh,
-            constraintChecker, profileFunction, activePlugin, context, preferences,
-            config, dateUtil, fabricPrivacy, androidPermission, uiInteraction, persistenceLayer, decimalFormatter, instantiator, jobName, workManager
+            injector, aapsLogger, rxBus, rh,
+            constraintChecker, profileFunction, activePlugin,
+            config, dateUtil, fabricPrivacy, uiInteraction, notificationManager, persistenceLayer, decimalFormatter, pumpEnactResultProvider, jobName, workManager, testScope, bolusProgressData
         )
-        val handler = mock(Handler::class.java)
-        Mockito.`when`(handler.post(anyObject())).thenAnswer { invocation: InvocationOnMock ->
+        val handler: Handler = mock()
+        whenever(handler.post(anyOrNull())).thenAnswer { invocation: InvocationOnMock ->
             (invocation.arguments[0] as Runnable).run()
             true
         }
@@ -288,7 +299,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         assertThat(commandQueue.size()).isEqualTo(1)
 
         // cancel tempbasal it should replace previous TEMPBASAL
-        commandQueue.cancelTempBasal(false, null)
+        commandQueue.cancelTempBasal(enforceNew = false, autoForced = false, callback = null)
         assertThat(commandQueue.size()).isEqualTo(1)
 
         // add extended bolus
@@ -421,7 +432,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.setUserOptions(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.SET_USER_SETTINGS)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.setUserOptions(null)
@@ -437,7 +448,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.loadEvents(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.LOAD_EVENTS)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.loadEvents(null)
@@ -453,7 +464,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.clearAlarms(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.CLEAR_ALARMS)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.clearAlarms(null)
@@ -469,7 +480,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.deactivate(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.DEACTIVATE)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.deactivate(null)
@@ -485,7 +496,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.updateTime(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.UPDATE_TIME)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.updateTime(null)
@@ -516,7 +527,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.loadHistory(0, null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.LOAD_HISTORY)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
         commandQueue.loadHistory(0, null)
@@ -530,7 +541,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
 
         // when
         testPumpPlugin.isProfileSet = true
-        commandQueue.setProfile(validProfile, false, object : Callback() {
+        commandQueue.setProfile(effectiveProfile, false, object : Callback() {
             override fun run() {
                 assertThat(result.success).isTrue()
                 assertThat(result.enacted).isFalse()
@@ -542,7 +553,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         assertThat(commandQueue.size()).isEqualTo(0)
         // different should be added
         testPumpPlugin.isProfileSet = false
-        commandQueue.setProfile(validProfile, false, object : Callback() {
+        commandQueue.setProfile(effectiveProfile, false, object : Callback() {
             override fun run() {
                 assertThat(result.success).isTrue()
                 assertThat(result.enacted).isTrue()
@@ -550,7 +561,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         })
         assertThat(commandQueue.size()).isEqualTo(1)
         // next should be ignored
-        commandQueue.setProfile(validProfile, false, object : Callback() {
+        commandQueue.setProfile(effectiveProfile, false, object : Callback() {
             override fun run() {
                 assertThat(result.success).isTrue()
             }
@@ -568,7 +579,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.stopPump(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.STOP_PUMP)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
     }
 
@@ -581,7 +592,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.startPump(null)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.START_PUMP)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
     }
 
@@ -594,7 +605,7 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         commandQueue.setTBROverNotification(null, true)
 
         // then
-        assertThat(commandQueue.isLastScheduled(Command.CommandType.INSIGHT_SET_TBR_OVER_ALARM)).isTrue()
+        assertThat(commandQueue.isReadStatusScheduled()).isFalse()
         assertThat(commandQueue.size()).isEqualTo(1)
     }
 
@@ -660,5 +671,108 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
 
         override val statusDescription: String
             get() = "CUSTOM COMMAND 3"
+    }
+
+    // --- Running-mode gate tests ---
+    //
+    // These verify the queue rejects commands when the active running mode forbids them.
+    // The gate itself is exhaustively tested in PumpCommandGateTest; here we only verify the queue
+    // calls the gate and propagates its decision to the callback.
+
+    @Test
+    fun `tempBasalAbsolute non-zero is rejected during DISCONNECTED_PUMP`() = runTest {
+        stubActiveMode(app.aaps.core.data.model.RM.Mode.DISCONNECTED_PUMP)
+        var callbackInvoked = false
+        val callback = object : Callback() {
+            override fun run() {
+                callbackInvoked = true
+                assertThat(result.success).isFalse()
+                assertThat(result.enacted).isFalse()
+            }
+        }
+        val queued = commandQueue.tempBasalAbsolute(1.5, 30, true, validProfile, PumpSync.TemporaryBasalType.NORMAL, callback)
+        assertThat(queued).isFalse()
+        assertThat(callbackInvoked).isTrue()
+    }
+
+    @Test
+    fun `tempBasalAbsolute rate zero passes during DISCONNECTED_PUMP`() = runTest {
+        // The reconciler must be able to enact zero-TBR while DISCONNECTED_PUMP is active.
+        stubActiveMode(app.aaps.core.data.model.RM.Mode.DISCONNECTED_PUMP)
+        val queued = commandQueue.tempBasalAbsolute(0.0, 30, true, validProfile, PumpSync.TemporaryBasalType.EMULATED_PUMP_SUSPEND, null)
+        assertThat(queued).isTrue()
+    }
+
+    @Test
+    fun `bolus is rejected during DISCONNECTED_PUMP`() = runTest {
+        stubActiveMode(app.aaps.core.data.model.RM.Mode.DISCONNECTED_PUMP)
+        var callbackInvoked = false
+        val callback = object : Callback() {
+            override fun run() {
+                callbackInvoked = true
+                assertThat(result.success).isFalse()
+            }
+        }
+        val info = DetailedBolusInfo().also { it.insulin = 1.0 }
+        val queued = commandQueue.bolus(info, callback)
+        assertThat(queued).isFalse()
+        assertThat(callbackInvoked).isTrue()
+    }
+
+    @Test
+    fun `extendedBolus is rejected during DISCONNECTED_PUMP`() = runTest {
+        stubActiveMode(app.aaps.core.data.model.RM.Mode.DISCONNECTED_PUMP)
+        var callbackInvoked = false
+        val callback = object : Callback() {
+            override fun run() {
+                callbackInvoked = true
+                assertThat(result.success).isFalse()
+            }
+        }
+        val queued = commandQueue.extendedBolus(2.0, 30, callback)
+        assertThat(queued).isFalse()
+        assertThat(callbackInvoked).isTrue()
+    }
+
+    @Test
+    fun `cancelTempBasal is allowed during DISCONNECTED_PUMP`() = runTest {
+        // Cancel is always allowed — it is the primitive used by RESUME and startup drift.
+        stubActiveMode(app.aaps.core.data.model.RM.Mode.DISCONNECTED_PUMP)
+        val queued = commandQueue.cancelTempBasal(enforceNew = true, autoForced = false, callback = null)
+        assertThat(queued).isTrue()
+    }
+
+    @Test
+    fun `tempBasalAbsolute non-zero is allowed during SUSPENDED_BY_USER`() = runTest {
+        // SUSPENDED_BY_USER is the temporary counterpart of DISABLED_LOOP — manual delivery stays
+        // available; the gate does not block TBR / bolus / EB.
+        stubActiveMode(app.aaps.core.data.model.RM.Mode.SUSPENDED_BY_USER)
+        val queued = commandQueue.tempBasalAbsolute(1.5, 30, true, validProfile, PumpSync.TemporaryBasalType.NORMAL, null)
+        assertThat(queued).isTrue()
+    }
+
+    @Test
+    fun `bolus is allowed during SUSPENDED_BY_USER`() = runTest {
+        stubActiveMode(app.aaps.core.data.model.RM.Mode.SUSPENDED_BY_USER)
+        val info = DetailedBolusInfo().also { it.insulin = 1.0 }
+        val queued = commandQueue.bolus(info, null)
+        assertThat(queued).isTrue()
+    }
+
+    @Test
+    fun `working mode allows all commands`() = runTest {
+        stubActiveMode(app.aaps.core.data.model.RM.Mode.CLOSED_LOOP)
+        assertThat(commandQueue.tempBasalAbsolute(1.5, 30, true, validProfile, PumpSync.TemporaryBasalType.NORMAL, null)).isTrue()
+        assertThat(commandQueue.cancelTempBasal(true, false, null)).isTrue()
+    }
+
+    private suspend fun stubActiveMode(mode: app.aaps.core.data.model.RM.Mode) {
+        whenever(persistenceLayer.getRunningModeActiveAt(anyLong())).thenReturn(
+            app.aaps.core.data.model.RM(timestamp = 0, mode = mode, duration = 0L)
+        )
+        // Resource strings used by the gate's rejection comment.
+        whenever(rh.gs(app.aaps.core.ui.R.string.pump_disconnected)).thenReturn("pump disconnected")
+        whenever(rh.gs(app.aaps.core.ui.R.string.loopsuspended)).thenReturn("loop suspended")
+        whenever(rh.gs(app.aaps.core.ui.R.string.pumpsuspended)).thenReturn("pump suspended")
     }
 }

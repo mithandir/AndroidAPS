@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--    Dialogs-->
+    <!--    Events-->
     <!-- PumpPluginBase -->
     <!--    DateUtil-->
-    <string name="minago">%1$d хв тому</string>
     <string name="minago_long">%1$d хвилин тому</string>
-    <string name="hoursago">%1$.1f год. тому</string>
     <string name="days_ago">%1$.1f днів тому</string>
     <string name="days_ago_round">%1$.0f днів тому</string>
     <string name="in_days">через %1$.0f днів</string>
@@ -57,4 +57,7 @@
     <string name="pref_show_ago">Показати Ago</string>
     <string name="default_custom_watchface_comment">Вікно за замовчуванням, ви можете натиснути на кнопку EXPORT WATCHFACE, щоб створити шаблон</string>
     <string name="wear_default_watchface">Циферблат за замовчуванням</string>
+    <!-- Permission rationales (used by PumpPluginBase) -->
+    <!-- Insulin -->
+    <!-- Concentration -->
 </resources>

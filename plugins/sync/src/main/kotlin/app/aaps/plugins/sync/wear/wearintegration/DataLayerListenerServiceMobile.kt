@@ -4,12 +4,9 @@ import android.os.Binder
 import android.os.Handler
 import android.os.HandlerThread
 import app.aaps.core.interfaces.aps.Loop
-import app.aaps.core.interfaces.configuration.Config
-import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
-import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -46,12 +43,9 @@ class DataLayerListenerServiceMobile : WearableListenerService() {
 
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var fabricPrivacy: FabricPrivacy
-    @Inject lateinit var profileFunction: ProfileFunction
-    @Inject lateinit var iobCobCalculator: IobCobCalculator
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var loop: Loop
     @Inject lateinit var wearPlugin: WearPlugin
-    @Inject lateinit var config: Config
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var aapsSchedulers: AapsSchedulers
@@ -98,6 +92,8 @@ class DataLayerListenerServiceMobile : WearableListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         disposable.clear()
+        handler.removeCallbacksAndMessages(null)
+        handler.looper.quitSafely()
         scope.cancel()
     }
 
@@ -132,7 +128,7 @@ class DataLayerListenerServiceMobile : WearableListenerService() {
             aapsLogger.debug(LTag.WEAR, "Nodes: ${capabilityInfo.nodes.joinToString(", ") { it.displayName + "(" + it.id + ")" }}")
             val bestNode = pickBestNodeId(capabilityInfo.nodes)
             transcriptionNodeId = bestNode?.id
-            wearPlugin.connectedDevice = bestNode?.displayName ?: rh.gs(R.string.no_watch_connected)
+            wearPlugin.updateConnectedDevice(bestNode?.displayName)
             rxBus.send(EventWearUpdateGui())
             aapsLogger.debug(LTag.WEAR, "Selected node: ${bestNode?.displayName} $transcriptionNodeId")
             rxBus.send(EventMobileToWear(EventData.ActionPing(System.currentTimeMillis())))

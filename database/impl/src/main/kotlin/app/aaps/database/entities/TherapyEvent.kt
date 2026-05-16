@@ -19,10 +19,8 @@ import java.util.TimeZone
         childColumns = ["referenceId"]
     )],
     indices = [
-        Index("id"),
         Index("type"),
         Index("nightscoutId"),
-        Index("isValid"),
         Index("referenceId"),
         Index("timestamp")
     ]
@@ -45,6 +43,8 @@ data class TherapyEvent(
     var glucose: Double? = null,
     var glucoseType: MeterType? = null,
     var glucoseUnit: GlucoseUnit,
+    var location: Location? = null,
+    var arrow: Arrow? = null
 ) : TraceableDBEntry, DBEntryWithTimeAndDuration {
 
     enum class MeterType {
@@ -107,6 +107,48 @@ data class TherapyEvent(
         LEAKING_INFUSION_SET,
 
         // Default
+        NONE
+        ;
+    }
+    enum class Location {
+        FRONT_RIGHT_UPPER_CHEST,
+        FRONT_LEFT_UPPER_CHEST,
+        SIDE_RIGHT_UPPER_ARM,
+        SIDE_LEFT_UPPER_ARM,
+        BACK_RIGHT_UPPER_ARM,
+        BACK_LEFT_UPPER_ARM,
+        SIDE_RIGHT_UPPER_ABDOMEN,
+        SIDE_LEFT_UPPER_ABDOMEN,
+        SIDE_RIGHT_LOWER_ABDOMEN,
+        SIDE_LEFT_LOWER_ABDOMEN,
+        FRONT_RIGHT_UPPER_ABDOMEN,
+        FRONT_LEFT_UPPER_ABDOMEN,
+        FRONT_RIGHT_LOWER_ABDOMEN,
+        FRONT_LEFT_LOWER_ABDOMEN,
+        BACK_RIGHT_BUTTOCK,
+        BACK_LEFT_BUTTOCK,
+        FRONT_RIGHT_UPPER_THIGH,
+        FRONT_LEFT_UPPER_THIGH,
+        FRONT_RIGHT_LOWER_THIGH,
+        FRONT_LEFT_LOWER_THIGH,
+        SIDE_RIGHT_UPPER_THIGH,
+        SIDE_LEFT_UPPER_THIGH,
+        SIDE_RIGHT_LOWER_THIGH,
+        SIDE_LEFT_LOWER_THIGH,
+        NONE
+        ;
+    }
+
+    enum class Arrow {
+        UP,
+        UP_RIGHT,
+        RIGHT,
+        DOWN_RIGHT,
+        DOWN,
+        DOWN_LEFT,
+        LEFT,
+        UP_LEFT,
+        CENTER,
         NONE
         ;
     }

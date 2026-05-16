@@ -1,23 +1,21 @@
 package app.aaps.pump.danars
 
-import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.pump.dana.DanaPump
 import app.aaps.pump.danars.comm.DanaRSPacket
 import app.aaps.shared.tests.TestBaseWithProfile
 import org.junit.jupiter.api.BeforeEach
 import org.mockito.ArgumentMatchers
-import org.mockito.Mock
-import org.mockito.Mockito
+import org.mockito.kotlin.whenever
 
 open class DanaRSTestBase : TestBaseWithProfile() {
 
-    @Mock lateinit var uiInteraction: UiInteraction
-
+    val bolusProgressData by lazy { BolusProgressData(ch, rh) }
     lateinit var danaPump: DanaPump
 
     @BeforeEach
     fun prepare() {
-        Mockito.`when`(rh.gs(ArgumentMatchers.anyInt())).thenReturn("AnyString")
+        whenever(rh.gs(ArgumentMatchers.anyInt())).thenReturn("AnyString")
     }
 
     fun createArray(length: Int, fillWith: Byte): ByteArray {
@@ -50,6 +48,6 @@ open class DanaRSTestBase : TestBaseWithProfile() {
 
     @BeforeEach
     fun setup() {
-        danaPump = DanaPump(aapsLogger, preferences, dateUtil, instantiator, decimalFormatter)
+        danaPump = DanaPump(aapsLogger, preferences, dateUtil, decimalFormatter, profileStoreProvider)
     }
 }

@@ -7,6 +7,8 @@ import org.json.JSONObject
 
 interface APSResult {
 
+    fun with(result: RT): APSResult
+
     var date: Long
     var reason: String
     var rate: Double
@@ -25,7 +27,7 @@ interface APSResult {
 
     val predictionsAsGv: MutableList<GV>
     val latestPredictionsTime: Long
-    val isChangeRequested: Boolean
+    suspend fun isChangeRequested(): Boolean
     var isTempBasalRequested: Boolean
     val isCarbsRequired: Boolean get() = carbsReq > 0
     val isBolusRequested: Boolean get() = smb > 0.0
@@ -49,8 +51,9 @@ interface APSResult {
 
     val iob: IobTotal? get() = iobData?.get(0)
 
-    fun resultAsString(): String
-    fun resultAsSpanned(): Spanned
+    suspend fun resultAsString(): String
+    suspend fun resultAsSpanned(): Spanned
+    suspend fun resultAsHtmlString(): String
     fun newAndClone(): APSResult
     fun json(): JSONObject?
     fun predictions(): Predictions?

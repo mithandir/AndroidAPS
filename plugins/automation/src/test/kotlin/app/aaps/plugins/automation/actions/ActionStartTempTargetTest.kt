@@ -4,16 +4,18 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.IDs
 import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.db.PersistenceLayer
-import app.aaps.core.interfaces.queue.Callback
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.elements.InputDuration
 import app.aaps.plugins.automation.elements.InputTempTarget
 import com.google.common.truth.Truth.assertThat
-import io.reactivex.rxjava3.core.Single
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockito.Mockito
-import org.mockito.Mockito.`when`
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argThat
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.skyscreamer.jsonassert.JSONAssert
 
 class ActionStartTempTargetTest : ActionsTestBase() {
@@ -22,7 +24,7 @@ class ActionStartTempTargetTest : ActionsTestBase() {
 
     @BeforeEach
     fun setup() {
-        `when`(rh.gs(R.string.starttemptarget)).thenReturn("Start temp target")
+        whenever(rh.gs(R.string.starttemptarget)).thenReturn("Start temp target")
 
         sut = ActionStartTempTarget(injector)
     }
@@ -38,11 +40,7 @@ class ActionStartTempTargetTest : ActionsTestBase() {
         assertThat(sut.shortDescription()).isEqualTo("Start temp target: 100mg/dl@null(Automation)")
     }
 
-    @Test fun iconTest() {
-        assertThat(sut.icon()).isEqualTo(app.aaps.core.objects.R.drawable.ic_temptarget_high_24dp)
-    }
-
-    @Test fun doActionTest() {
+    @Test fun doActionTest() = runTest {
 
         val expectedTarget = TT(
             id = 0,
@@ -66,22 +64,19 @@ class ActionStartTempTargetTest : ActionsTestBase() {
         val updated = mutableListOf<TT>().apply {
         }
 
-        `when`(
-            persistenceLayer.insertAndCancelCurrentTemporaryTarget(argThatKotlin {
-                it.copy(timestamp = expectedTarget.timestamp, utcOffset = expectedTarget.utcOffset) // those can be different
+        whenever(
+            persistenceLayer.insertAndCancelCurrentTemporaryTarget(argThat {
+                copy(timestamp = expectedTarget.timestamp, utcOffset = expectedTarget.utcOffset) // those can be different
                     .contentEqualsTo(expectedTarget)
-            }, anyObject(), anyObject(), anyObject(), anyObject())
-        ).thenReturn(Single.just(PersistenceLayer.TransactionResult<TT>().apply {
+            }, anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
+        ).thenReturn(PersistenceLayer.TransactionResult<TT>().apply {
             inserted.addAll(inserted)
             updated.addAll(updated)
-        }))
-
-        sut.doAction(object : Callback() {
-            override fun run() {
-                assertThat(result.success).isTrue()
-            }
         })
-        Mockito.verify(persistenceLayer, Mockito.times(1)).insertAndCancelCurrentTemporaryTarget(anyObject(), anyObject(), anyObject(), anyObject(), anyObject())
+
+        val result = sut.doAction()
+        assertThat(result.success).isTrue()
+        verify(persistenceLayer, times(1)).insertAndCancelCurrentTemporaryTarget(anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
     }
 
     @Test fun hasDialogTest() {

@@ -1,14 +1,18 @@
 package app.aaps.plugins.configuration.setupwizard.elements
 
-import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
-import dagger.android.HasAndroidInjector
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.protection.PasswordCheck
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.keys.interfaces.Preferences
+import javax.inject.Inject
 
-class SWInfoText(injector: HasAndroidInjector) : SWItem(injector, Type.TEXT) {
+class SWInfoText @Inject constructor(aapsLogger: AAPSLogger, rh: ResourceHelper, rxBus: RxBus, preferences: Preferences, passwordCheck: PasswordCheck) : SWItem(aapsLogger, rh, rxBus, preferences, passwordCheck) {
 
     private var textLabel: String? = null
-    private var l: TextView? = null
     private var visibilityValidator: (() -> Boolean)? = null
 
     override fun label(label: Int): SWInfoText {
@@ -26,15 +30,10 @@ class SWInfoText(injector: HasAndroidInjector) : SWItem(injector, Type.TEXT) {
         return this
     }
 
-    override fun generateDialog(layout: LinearLayout) {
-        val context = layout.context
-        l = TextView(context)
-        l?.id = View.generateViewId()
-        if (textLabel != null) l?.text = textLabel else l?.setText(label!!)
-        layout.addView(l)
-    }
-
-    override fun processVisibility() {
-        if (visibilityValidator?.invoke() == false) l?.visibility = View.GONE else l?.visibility = View.VISIBLE
+    @Composable
+    override fun Compose() {
+        if (visibilityValidator?.invoke() == false) return
+        val text = textLabel ?: label?.let { stringResource(it) } ?: return
+        Text(text = text)
     }
 }
