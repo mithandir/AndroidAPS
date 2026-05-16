@@ -85,6 +85,18 @@ class Converters {
     fun toTherapyEventType(therapyEventType: String?) = therapyEventType?.let { TherapyEvent.Type.valueOf(it) }
 
     @TypeConverter
+    fun fromTherapyEventLocation(therapyEventLocation: TherapyEvent.Location?) = therapyEventLocation?.name
+
+    @TypeConverter
+    fun toTherapyEventLocation(therapyEventLocation: String?): TherapyEvent.Location? = therapyEventLocation?.let { TherapyEvent.Location.valueOf(it) }
+
+    @TypeConverter
+    fun fromTherapyEventArrow(therapyEventArrow: TherapyEvent.Arrow?) = therapyEventArrow?.name
+
+    @TypeConverter
+    fun toTherapyEventArrow(therapyEventArrow: String?): TherapyEvent.Arrow? = therapyEventArrow?.let { TherapyEvent.Arrow.valueOf(it) }
+
+    @TypeConverter
     fun fromGlucoseType(meterType: TherapyEvent.MeterType?) = meterType?.name
 
     @TypeConverter
@@ -100,7 +112,7 @@ class Converters {
     fun fromPumpType(pumpType: InterfaceIDs.PumpType?) = pumpType?.name
 
     @TypeConverter
-    fun toPumpType(pumpType: String?) = pumpType?.let { InterfaceIDs.PumpType.valueOf(it) }
+    fun toPumpType(pumpType: String?) = pumpType?.let { InterfaceIDs.PumpType.fromString(it) }
 
     @TypeConverter
     fun fromAlgorithm(algorithm: APSResult.Algorithm?) = algorithm?.name

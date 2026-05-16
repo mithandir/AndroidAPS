@@ -1,6 +1,7 @@
 package app.aaps.plugins.aps.autotune
 
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.data.Block
 import app.aaps.core.data.model.data.TargetBlock
 import app.aaps.core.data.time.T
@@ -10,7 +11,6 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.aps.autotune.data.ATProfile
-import app.aaps.plugins.aps.autotune.data.LocalInsulin
 import app.aaps.plugins.aps.autotune.data.PreppedGlucose
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
@@ -19,7 +19,7 @@ import org.json.JSONObject
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
-import org.mockito.Mockito.`when`
+import org.mockito.kotlin.whenever
 import java.io.File
 import java.util.TimeZone
 
@@ -45,9 +45,9 @@ class AutotuneCoreTest : TestBaseWithProfile() {
         val inputProfile = atProfileFromOapsJson(JSONObject(inputProfileJson), dateUtil)!!
         val prep = PreppedGlucose(JSONObject(prepJson), dateUtil)
 
-        `when`(preferences.get(DoubleKey.AutosensMax)).thenReturn(autotuneMax)
-        `when`(preferences.get(DoubleKey.AutosensMin)).thenReturn(autotuneMin)
-        `when`(preferences.get(DoubleKey.ApsSmbMin5MinCarbsImpact)).thenReturn(min5mCarbImpact)
+        whenever(preferences.get(DoubleKey.AutosensMax)).thenReturn(autotuneMax)
+        whenever(preferences.get(DoubleKey.AutosensMin)).thenReturn(autotuneMin)
+        whenever(preferences.get(DoubleKey.ApsSmbMin5MinCarbsImpact)).thenReturn(min5mCarbImpact)
         val oapsOutputProfileJson = File("src/test/res/autotune/test1/aapsorefprofile.json").readText()
         val oapsOutputProfile = atProfileFromOapsJson(JSONObject(oapsOutputProfileJson), dateUtil)!!
         val outProfile = autotuneCore.tuneAllTheThings(prep, inputProfile, inputProfile)
@@ -67,9 +67,9 @@ class AutotuneCoreTest : TestBaseWithProfile() {
         val pumpProfileJson = File("src/test/res/autotune/test4/profile.pump.json").readText()
         val pumpProfile = atProfileFromOapsJson(JSONObject(pumpProfileJson), dateUtil)!!
         val prep = PreppedGlucose(JSONObject(prepJson), dateUtil)
-        `when`(preferences.get(DoubleKey.AutosensMax)).thenReturn(autotuneMax)
-        `when`(preferences.get(DoubleKey.AutosensMin)).thenReturn(autotuneMin)
-        `when`(preferences.get(DoubleKey.ApsSmbMin5MinCarbsImpact)).thenReturn(min5mCarbImpact)
+        whenever(preferences.get(DoubleKey.AutosensMax)).thenReturn(autotuneMax)
+        whenever(preferences.get(DoubleKey.AutosensMin)).thenReturn(autotuneMin)
+        whenever(preferences.get(DoubleKey.ApsSmbMin5MinCarbsImpact)).thenReturn(min5mCarbImpact)
         val oapsOutputProfileJson = File("src/test/res/autotune/test4/newprofile.2022-05-30.json").readText()
         val oapsOutputProfile = atProfileFromOapsJson(JSONObject(oapsOutputProfileJson), dateUtil)!!
         val outProfile = autotuneCore.tuneAllTheThings(prep, inputProfile, pumpProfile)
@@ -93,7 +93,7 @@ class AutotuneCoreTest : TestBaseWithProfile() {
             val units = GlucoseUnit.fromText(txtUnits)
             val dia = JsonHelper.safeGetDoubleAllowNull(jsonObject, "dia") ?: return null
             val peak = JsonHelper.safeGetIntAllowNull(jsonObject, "insulinPeakTime") ?: return null
-            val localInsulin = LocalInsulin("insulin", peak, dia)
+            val iCfg = ICfg("insulin", peak, dia, 1.0)
             val timezone = TimeZone.getTimeZone(JsonHelper.safeGetString(jsonObject, "timezone", "UTC"))
             val isfJson = jsonObject.getJSONObject("isfProfile")
             val isfBlocks = ArrayList<Block>(1).also {
@@ -118,11 +118,10 @@ class AutotuneCoreTest : TestBaseWithProfile() {
                 icBlocks = icBlocks,
                 targetBlocks = targetBlocks,
                 glucoseUnit = units,
-                timeZone = timezone,
-                dia = dia
+                timeZone = timezone
             )
-            return ATProfile(ProfileSealed.Pure(pure, activePlugin), localInsulin, injector).also { it.dateUtil = dateUtil; it.profileUtil = profileUtil }
-        } catch (ignored: Exception) {
+            return ATProfile(preferences, profileUtil, dateUtil, rh, profileStoreProvider, aapsLogger).with(ProfileSealed.Pure(pure, activePlugin), iCfg)
+        } catch (_: Exception) {
             return null
         }
     }
@@ -145,7 +144,7 @@ class AutotuneCoreTest : TestBaseWithProfile() {
             val lastTas = last.getInt("minutes") * 60
             val value = last.getDouble("rate")
             ret.add(jsonArray.length() - 1, Block((T.hours(24).secs() - lastTas) * 1000L, value))
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             return null
         }
         return ret

@@ -1,18 +1,17 @@
 package app.aaps.plugins.automation.actions
 
 import app.aaps.core.interfaces.db.PersistenceLayer
-import app.aaps.core.interfaces.queue.Callback
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.elements.InputString
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
-import io.reactivex.rxjava3.core.Single
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
-import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.whenever
 import org.skyscreamer.jsonassert.JSONAssert
 
 class ActionNotificationTest : TestBaseWithProfile() {
@@ -26,19 +25,22 @@ class ActionNotificationTest : TestBaseWithProfile() {
             if (it is ActionNotification) {
                 it.rh = rh
                 it.rxBus = rxBus
+                it.notificationManager = notificationManager
                 it.persistenceLayer = persistenceLayer
                 it.dateUtil = dateUtil
-                it.instantiator = instantiator
+                it.pumpEnactResultProvider = pumpEnactResultProvider
             }
         }
     }
 
     @BeforeEach
     fun setup() {
-        `when`(rh.gs(app.aaps.core.ui.R.string.notification)).thenReturn("Notification")
-        `when`(rh.gs(eq(R.string.notification_message), any())).thenReturn("Notification: %s")
-        `when`(persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(any(), any(), any(), any(), any(), any()))
-            .thenReturn(Single.just(PersistenceLayer.TransactionResult()))
+        whenever(rh.gs(app.aaps.core.ui.R.string.notification)).thenReturn("Notification")
+        whenever(rh.gs(eq(R.string.notification_message), any())).thenReturn("Notification: %s")
+        runTest {
+            whenever(persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(any(), any(), any(), any(), any(), any()))
+                .thenReturn(PersistenceLayer.TransactionResult())
+        }
 
         sut = ActionNotification(injector)
     }
@@ -52,18 +54,9 @@ class ActionNotificationTest : TestBaseWithProfile() {
         assertThat(sut.shortDescription()).isEqualTo("Notification: %s")
     }
 
-    @Test fun iconTest() {
-        assertThat(sut.icon()).isEqualTo(R.drawable.ic_notifications)
-    }
-
-    @Test fun doActionTest() {
-        sut.doAction(object : Callback() {
-            override fun run() {
-                assertThat(result.success).isTrue()
-            }
-        })
-        //Mockito.verify(rxBus, Mockito.times(2)).send(anyObject())
-        //Mockito.verify(repository, Mockito.times(1)).runTransaction(any(Transaction::class.java))
+    @Test fun doActionTest() = runTest {
+        val result = sut.doAction()
+        assertThat(result.success).isTrue()
     }
 
     @Test fun hasDialogTest() {

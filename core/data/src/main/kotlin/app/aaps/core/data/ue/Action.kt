@@ -12,6 +12,11 @@ enum class Action(val colorGroup: ColorGroup) {
     EXTENDED_CARBS(ColorGroup.CarbTreatment),
     TEMP_BASAL(ColorGroup.BasalTreatment),
     TT(ColorGroup.TT),
+    NEW_INSULIN(ColorGroup.InsulinTreatment),
+    STORE_INSULIN(ColorGroup.InsulinTreatment),
+    CHANGE_PUMP_INSULIN(ColorGroup.InsulinTreatment),
+    CHANGE_INSULIN_CONCENTRATION(ColorGroup.InsulinTreatment),
+    INSULIN_REMOVED(ColorGroup.InsulinTreatment),
     NEW_PROFILE(ColorGroup.Profile),
     CLONE_PROFILE(ColorGroup.Profile),
     STORE_PROFILE(ColorGroup.Profile),
@@ -37,7 +42,9 @@ enum class Action(val colorGroup: ColorGroup) {
     CANCEL_EXTENDED_BOLUS(ColorGroup.InsulinTreatment),
     CANCEL_TT(ColorGroup.TT),
     CAREPORTAL(ColorGroup.Careportal),
+    SENSOR_LOCATION(ColorGroup.Careportal),
     SITE_CHANGE(ColorGroup.Pump),
+    SITE_LOCATION(ColorGroup.Pump),
     RESERVOIR_CHANGE(ColorGroup.Pump),
     CALIBRATION(ColorGroup.Careportal),
     PRIME_BOLUS(ColorGroup.Pump),
@@ -89,6 +96,11 @@ enum class Action(val colorGroup: ColorGroup) {
     EXIT_AAPS(ColorGroup.Aaps),
     PLUGIN_ENABLED(ColorGroup.Aaps),
     PLUGIN_DISABLED(ColorGroup.Aaps),
+    RUNNING_MODE(ColorGroup.RunningMode),
+    RUNNING_MODE_REMOVED(ColorGroup.RunningMode),
+    RUNNING_MODE_UPDATED(ColorGroup.RunningMode),
+    SCENE_ACTIVATED(ColorGroup.Aaps),
+    SCENE_DEACTIVATED(ColorGroup.Aaps),
     UNKNOWN(ColorGroup.Aaps)
     ;
 
@@ -106,6 +118,7 @@ enum class Action(val colorGroup: ColorGroup) {
         Loop,
         Careportal,
         Pump,
-        Aaps
+        Aaps,
+        RunningMode
     }
 }

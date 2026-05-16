@@ -1,20 +1,12 @@
 package app.aaps.pump.danars.comm
 
-import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.ui.UiInteraction
-import app.aaps.core.interfaces.utils.DateUtil
-import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.danars.encryption.BleEncryption
+import app.aaps.pump.danars.encryption.BleEncryption
 import org.joda.time.DateTime
+import org.joda.time.IllegalFieldValueException
 import org.joda.time.IllegalInstantException
 import java.nio.charset.StandardCharsets
-import javax.inject.Inject
 
-open class DanaRSPacket(protected var injector: HasAndroidInjector) {
-
-    @Inject lateinit var aapsLogger: AAPSLogger
-    @Inject lateinit var dateUtil: DateUtil
-    @Inject lateinit var uiInteraction: UiInteraction
+open class DanaRSPacket {
 
     var isReceived = false
         private set
@@ -83,8 +75,7 @@ open class DanaRSPacket(protected var injector: HasAndroidInjector) {
                 intFromBuff(buff, offset + 4, 1),
                 intFromBuff(buff, offset + 5, 1)
             ).millis
-        } catch (e: IllegalInstantException) {
-            // expect
+        } catch (_: IllegalInstantException) {
             // org.joda.time.IllegalInstantException: Illegal instant due to time zone offset transition (daylight savings time 'gap')
             // add 1 hour
             DateTime(
@@ -95,6 +86,9 @@ open class DanaRSPacket(protected var injector: HasAndroidInjector) {
                 intFromBuff(buff, offset + 4, 1),
                 intFromBuff(buff, offset + 5, 1)
             ).millis
+        } catch (_: IllegalFieldValueException) {
+            // Corrupted BLE data (e.g. hourOfDay=190) — return 0 to skip this record
+            0L
         }
 
     protected fun intFromBuff(b: ByteArray, srcStart: Int, srcLength: Int): Int =
@@ -165,10 +159,5 @@ open class DanaRSPacket(protected var injector: HasAndroidInjector) {
             }
             return data
         }
-    }
-
-    init {
-        @Suppress("LeakingThis")
-        injector.androidInjector().inject(this)
     }
 }

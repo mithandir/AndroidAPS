@@ -2,6 +2,7 @@ package app.aaps.core.objects.extensions
 
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.PS
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.profile.PureProfile
@@ -18,7 +19,7 @@ fun PS.getCustomizedName(decimalFormatter: DecimalFormatter): String {
         name = decimalFormatter.to2Decimal(ProfileSealed.PS(value = this, activePlugin = null).percentageBasalSum()) + "U "
     }
     if (timeshift != 0L || percentage != 100) {
-        name += "($percentage%"
+        name += " ($percentage%"
         if (timeshift != 0L) name += "," + T.msecs(timeshift).hours() + "h"
         name += ")"
     }
@@ -32,7 +33,9 @@ fun pureProfileFromJson(jsonObject: JSONObject, dateUtil: DateUtil, defaultUnits
     try {
         val txtUnits = JsonHelper.safeGetStringAllowNull(jsonObject, "units", defaultUnits) ?: return null
         val units = GlucoseUnit.fromText(txtUnits)
-        val dia = JsonHelper.safeGetDoubleAllowNull(jsonObject, "dia") ?: return null
+        val iCfg = JsonHelper.safeGetJSONObject(jsonObject, "iCfg", null)?.let {
+            ICfg.fromJson(it)
+        }
         val timezone = TimeZone.getTimeZone(JsonHelper.safeGetString(jsonObject, "timezone", "UTC"))
 
         val isfBlocks = blockFromJsonArray(jsonObject.getJSONArray("sens"), dateUtil) ?: return null
@@ -51,9 +54,9 @@ fun pureProfileFromJson(jsonObject: JSONObject, dateUtil: DateUtil, defaultUnits
             targetBlocks = targetBlocks,
             glucoseUnit = units,
             timeZone = timezone,
-            dia = dia
+            iCfg = iCfg
         )
-    } catch (ignored: Exception) {
+    } catch (_: Exception) {
         return null
     }
 }

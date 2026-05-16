@@ -2,11 +2,7 @@ package app.aaps.core.ui.extensions
 
 import android.os.Handler
 import android.os.Looper
-import android.view.View
 
-fun Boolean.toVisibility() = if (this) View.VISIBLE else View.GONE
-fun Boolean.toVisibilityKeepSpace() = if (this) View.VISIBLE else View.INVISIBLE
-
-fun runOnUiThread(theRunnable: Runnable?) = theRunnable?.let {
+fun runOnUiThread(runnable: Runnable?) = runnable?.let {
     Handler(Looper.getMainLooper()).post(it)
 }

@@ -10,17 +10,22 @@ import app.aaps.core.interfaces.aps.MealData
 import app.aaps.core.interfaces.aps.OapsProfile
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.aps.RT
-import app.aaps.core.objects.aps.DetermineBasalResult
-import dagger.android.HasAndroidInjector
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.builtins.ArraySerializer
 import kotlinx.serialization.json.Json
+import javax.inject.Provider
 
-fun app.aaps.database.entities.APSResult.fromDb(injector: HasAndroidInjector): APSResult =
+@OptIn(ExperimentalSerializationApi::class)
+private val rtJson = Json {
+    allowSpecialFloatingPointValues = true
+    ignoreUnknownKeys = true
+}
+
+fun app.aaps.database.entities.APSResult.fromDb(apsResultProvider: Provider<APSResult>): APSResult =
     when (algorithm) {
         app.aaps.database.entities.APSResult.Algorithm.AMA,
         app.aaps.database.entities.APSResult.Algorithm.SMB      ->
-            DetermineBasalResult(injector, Json.decodeFromString(this.resultJson)).also { result ->
+            apsResultProvider.get().with(rtJson.decodeFromString(this.resultJson)).also { result ->
                 result.date = this.timestamp
                 result.glucoseStatus = try {
                     this.glucoseStatusJson?.let { Json.decodeFromString(it) }
@@ -35,7 +40,7 @@ fun app.aaps.database.entities.APSResult.fromDb(injector: HasAndroidInjector): A
             }
 
         app.aaps.database.entities.APSResult.Algorithm.AUTO_ISF ->
-            DetermineBasalResult(injector, Json.decodeFromString(this.resultJson)).also { result ->
+            apsResultProvider.get().with(rtJson.decodeFromString(this.resultJson)).also { result ->
                 result.date = this.timestamp
                 result.glucoseStatus = try {
                     this.glucoseStatusJson?.let { Json.decodeFromString(it) }
@@ -66,7 +71,7 @@ fun APSResult.toDb(): app.aaps.database.entities.APSResult =
                 profileJson = this.oapsProfile?.let { Json.encodeToString(OapsProfile.serializer(), it) },
                 mealDataJson = this.mealData?.let { Json.encodeToString(MealData.serializer(), it) },
                 autosensDataJson = this.autosensResult?.let { Json.encodeToString(AutosensResult.serializer(), it) },
-                resultJson = Json.encodeToString(RT.serializer(), this.rawData() as RT)
+                resultJson = rtJson.encodeToString(RT.serializer(), this.rawData() as RT)
             )
 
         APSResult.Algorithm.AUTO_ISF ->
@@ -79,7 +84,7 @@ fun APSResult.toDb(): app.aaps.database.entities.APSResult =
                 profileJson = this.oapsProfileAutoIsf?.let { Json.encodeToString(OapsProfileAutoIsf.serializer(), it) },
                 mealDataJson = this.mealData?.let { Json.encodeToString(MealData.serializer(), it) },
                 autosensDataJson = this.autosensResult?.let { Json.encodeToString(AutosensResult.serializer(), it) },
-                resultJson = Json.encodeToString(RT.serializer(), this.rawData() as RT)
+                resultJson = rtJson.encodeToString(RT.serializer(), this.rawData() as RT)
             )
 
         else                         -> error("Unsupported")

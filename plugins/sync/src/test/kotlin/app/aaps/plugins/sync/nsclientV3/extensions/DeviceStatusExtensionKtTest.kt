@@ -1,10 +1,10 @@
 package app.aaps.plugins.sync.nsclientV3.extensions
 
 import app.aaps.core.data.model.DS
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
-import app.aaps.core.interfaces.objects.Instantiator
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
@@ -16,10 +16,13 @@ import app.aaps.plugins.sync.nsclient.data.NSDeviceStatusHandler
 import app.aaps.plugins.sync.nsclient.data.ProcessedDeviceStatusDataImpl
 import app.aaps.shared.tests.TestBase
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
-import org.mockito.Mockito
+import org.mockito.kotlin.whenever
+import javax.inject.Provider
 
 @Suppress("SpellCheckingInspection")
 internal class DeviceStatusExtensionKtTest : TestBase() {
@@ -29,19 +32,19 @@ internal class DeviceStatusExtensionKtTest : TestBase() {
     @Mock lateinit var dateUtil: DateUtil
     @Mock lateinit var config: Config
     @Mock lateinit var runningConfiguration: RunningConfiguration
-    @Mock lateinit var instantiator: Instantiator
+    @Mock lateinit var apsResultProvider: Provider<APSResult>
     @Mock lateinit var persistenceLayer: PersistenceLayer
     @Mock lateinit var overviewData: OverviewData
     @Mock lateinit var calculationWorkflow: CalculationWorkflow
-
     private lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
     private lateinit var nsDeviceStatusHandler: NSDeviceStatusHandler
+    private val testScope = CoroutineScope(Dispatchers.Unconfined)
 
     @BeforeEach
     fun setup() {
-        processedDeviceStatusData = ProcessedDeviceStatusDataImpl(rh, dateUtil, preferences, instantiator)
-        nsDeviceStatusHandler = NSDeviceStatusHandler(preferences, config, dateUtil, runningConfiguration, processedDeviceStatusData, aapsLogger, persistenceLayer, overviewData, calculationWorkflow)
-        Mockito.`when`(config.AAPSCLIENT).thenReturn(true)
+        processedDeviceStatusData = ProcessedDeviceStatusDataImpl(apsResultProvider)
+        nsDeviceStatusHandler = NSDeviceStatusHandler(preferences, config, dateUtil, runningConfiguration, processedDeviceStatusData, aapsLogger, persistenceLayer, overviewData, calculationWorkflow, rxBus, testScope)
+        whenever(config.AAPSCLIENT).thenReturn(true)
     }
 
     @Test

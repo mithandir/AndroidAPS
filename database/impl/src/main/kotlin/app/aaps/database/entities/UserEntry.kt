@@ -37,6 +37,10 @@ data class UserEntry(
         EXTENDED_CARBS,
         TEMP_BASAL,
         TT,
+        NEW_INSULIN,
+        STORE_INSULIN,
+        CHANGE_PUMP_INSULIN,
+        CHANGE_INSULIN_CONCENTRATION,
         NEW_PROFILE,
         CLONE_PROFILE,
         STORE_PROFILE,
@@ -62,7 +66,9 @@ data class UserEntry(
         CANCEL_EXTENDED_BOLUS,
         CANCEL_TT,
         CAREPORTAL,
+        SENSOR_LOCATION,
         SITE_CHANGE,
+        SITE_LOCATION,
         RESERVOIR_CHANGE,
         CALIBRATION,
         PRIME_BOLUS,
@@ -76,6 +82,7 @@ data class UserEntry(
         CAREPORTAL_REMOVED,
         EXTENDED_BOLUS_REMOVED,
         FOOD_REMOVED,
+        INSULIN_REMOVED,
         PROFILE_REMOVED,
         PROFILE_SWITCH_REMOVED,
         RESTART_EVENTS_REMOVED,
@@ -114,6 +121,11 @@ data class UserEntry(
         EXIT_AAPS,
         PLUGIN_ENABLED,
         PLUGIN_DISABLED,
+        RUNNING_MODE,
+        RUNNING_MODE_REMOVED,
+        RUNNING_MODE_UPDATED,
+        SCENE_ACTIVATED,
+        SCENE_DEACTIVATED,
         UNKNOWN
         ;
     }
@@ -130,7 +142,9 @@ data class UserEntry(
         LoopDialog,
         TempBasalDialog,
         CalibrationDialog,
+        ConcentrationDialog,
         FillDialog,
+        SiteRotationDialog,
         BgCheck,
         SensorInsert,
         BatteryChange,
@@ -154,6 +168,7 @@ data class UserEntry(
         Glunovo,
         Intelligo,
         Xdrip,
+        Insulin,            //From Insulin plugin
         LocalProfile,       //From LocalProfile plugin
         Loop,               //From Loop plugin
         Maintenance,        //From Maintenance plugin
@@ -188,6 +203,11 @@ data class UserEntry(
         Overview,           //From OverViewPlugin
         Ottai,              //From Ottai plugin
         SyaiTag,            //From Syai Tag plugin
+        SiBionic,
+        Sino,
+        Instara,            // From Instara plugin
+        NotificationReader,
+        Scene,              //From Scene activation
         Stats,              //From Stat Activity
         Aaps,               // MainApp
         BgFragment,

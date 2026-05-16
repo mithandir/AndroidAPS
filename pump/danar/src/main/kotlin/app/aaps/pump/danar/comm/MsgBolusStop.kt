@@ -1,7 +1,6 @@
 package app.aaps.pump.danar.comm
 
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
 import dagger.android.HasAndroidInjector
 
 class MsgBolusStop(
@@ -14,16 +13,14 @@ class MsgBolusStop(
     }
 
     override fun handleMessage(bytes: ByteArray) {
-        aapsLogger.debug(LTag.PUMPCOMM, "Messsage received")
-        val bolusingEvent = EventOverviewBolusProgress
+        aapsLogger.debug(LTag.PUMPCOMM, "Message received")
         danaPump.bolusStopped = true
         if (!danaPump.bolusStopForced) {
-            danaPump.bolusingTreatment?.insulin = danaPump.bolusAmountToBeDelivered
-            bolusingEvent.status = rh.gs(app.aaps.pump.dana.R.string.overview_bolusprogress_delivered)
-            bolusingEvent.percent = 100
+            val insulin = bolusProgressData.state.value?.insulin ?: 0.0
+            bolusProgressData.updateProgress(percent = 100)
         } else {
-            bolusingEvent.status = rh.gs(app.aaps.pump.dana.R.string.overview_bolusprogress_stoped)
+            val currentPercent = bolusProgressData.state.value?.percent ?: 0
+            bolusProgressData.updateProgress(currentPercent, rh.gs(app.aaps.pump.dana.R.string.overview_bolusprogress_stoped))
         }
-        rxBus.send(bolusingEvent)
     }
 }

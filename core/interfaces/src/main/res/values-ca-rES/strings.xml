@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--    Dialogs-->
+    <!--    Events-->
     <!-- PumpPluginBase -->
     <!--    DateUtil-->
-    <string name="minago">Fa %1$d m</string>
-    <string name="hoursago">Fa %1$.1f h</string>
     <string name="shorthour">h</string>
     <string name="days">dies</string>
     <string name="hours">hores</string>
@@ -37,4 +37,7 @@
     <string name="pref_show_bg">Mostrar glucèmia</string>
     <string name="pref_show_direction_arrow">Mostrar fletxa direcció</string>
     <string name="pref_show_ago">Mostrar històric</string>
+    <!-- Permission rationales (used by PumpPluginBase) -->
+    <!-- Insulin -->
+    <!-- Concentration -->
 </resources>

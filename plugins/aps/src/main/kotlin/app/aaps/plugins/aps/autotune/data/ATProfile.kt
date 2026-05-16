@@ -1,53 +1,47 @@
 package app.aaps.plugins.aps.autotune.data
 
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.data.Block
 import app.aaps.core.data.time.T
-import app.aaps.core.interfaces.configuration.Config
-import app.aaps.core.interfaces.insulin.Insulin
+import app.aaps.core.interfaces.insulin.InsulinType
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.objects.Instantiator
-import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileStore
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.profile.PureProfile
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.DoubleKey
-import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.blockValueBySeconds
 import app.aaps.core.objects.extensions.pureProfileFromJson
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.utils.MidnightUtils
 import app.aaps.plugins.aps.R
-import dagger.android.HasAndroidInjector
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.text.DecimalFormat
 import java.util.TimeZone
 import javax.inject.Inject
+import javax.inject.Provider
 import kotlin.math.min
 
-class ATProfile(profile: Profile, var localInsulin: LocalInsulin, val injector: HasAndroidInjector) {
+class ATProfile @Inject constructor(
+    private val preferences: Preferences,
+    private val profileUtil: ProfileUtil,
+    private val dateUtil: DateUtil,
+    private val rh: ResourceHelper,
+    private val profileStoreProvider: Provider<ProfileStore>,
+    private val aapsLogger: AAPSLogger
+) {
 
-    @Inject lateinit var activePlugin: ActivePlugin
-    @Inject lateinit var preferences: Preferences
-    @Inject lateinit var profileUtil: ProfileUtil
-    @Inject lateinit var dateUtil: DateUtil
-    @Inject lateinit var config: Config
-    @Inject lateinit var rxBus: RxBus
-    @Inject lateinit var rh: ResourceHelper
-    @Inject lateinit var instantiator: Instantiator
-    @Inject lateinit var aapsLogger: AAPSLogger
-
-    var profile: ProfileSealed
-    var circadianProfile: ProfileSealed
+    lateinit var profile: ProfileSealed
+    lateinit var iCfg: ICfg
+    lateinit var circadianProfile: ProfileSealed
     private lateinit var pumpProfile: ProfileSealed
     var profileName: String = ""
     var basal = DoubleArray(24)
@@ -70,9 +64,35 @@ class ATProfile(profile: Profile, var localInsulin: LocalInsulin, val injector: 
     private val avgIC: Double
         get() = if (profile.getIcsValues().size == 1) profile.getIcsValues()[0].value else Round.roundTo(averageProfileValue(profile.getIcsValues()), 0.01)
 
+    fun with(profile: Profile, iCfg: ICfg): ATProfile {
+        this.profile = profile as ProfileSealed
+        this.iCfg = iCfg
+
+        circadianProfile = profile
+        isValid = profile.isValid
+        if (isValid) {
+            //initialize tuned value with current profile values
+            var minBasal = 1.0
+            for (h in 0..23) {
+                basal[h] = Round.roundTo(profile.basalBlocks.blockValueBySeconds(T.hours(h.toLong()).secs().toInt(), 1.0, 0), 0.001)
+                minBasal = min(minBasal, basal[h])
+            }
+            ic = avgIC
+            isf = avgISF
+            if (ic * isf * minBasal == 0.0)     // Additional validity check to avoid error later in AutotunePrep
+                isValid = false
+            pumpProfile = profile
+            pumpProfileAvgIC = avgIC
+            pumpProfileAvgISF = avgISF
+        }
+        dia = iCfg.dia
+        peak = iCfg.peak
+        return this
+    }
+
     fun getBasal(timestamp: Long): Double = basal[MidnightUtils.secondsFromMidnight(timestamp) / 3600]
 
-    // for localProfilePlugin Synchronisation
+    // for local profile synchronisation
     fun basal() = jsonArray(basal)
     fun ic(circadian: Boolean = false): JSONArray {
         if (circadian)
@@ -103,20 +123,17 @@ class ATProfile(profile: Profile, var localInsulin: LocalInsulin, val injector: 
     fun profileToOrefJSON(): String {
         var jsonString = ""
         val json = JSONObject()
-        val insulinInterface: Insulin = activePlugin.activeInsulin
+        val insulinType = InsulinType.fromPeak(iCfg.peak * 60000L)
         try {
             json.put("name", profileName)
             json.put("min_5m_carbimpact", preferences.get(DoubleKey.ApsAmaMin5MinCarbsImpact))
             json.put("dia", dia)
-            if (insulinInterface.id === Insulin.InsulinType.OREF_ULTRA_RAPID_ACTING) json.put(
-                "curve",
-                "ultra-rapid"
-            ) else if (insulinInterface.id === Insulin.InsulinType.OREF_RAPID_ACTING) json.put("curve", "rapid-acting") else if (insulinInterface.id === Insulin.InsulinType.OREF_LYUMJEV) {
+            if (insulinType == InsulinType.OREF_ULTRA_RAPID_ACTING)
                 json.put("curve", "ultra-rapid")
-                json.put("useCustomPeakTime", true)
-                json.put("insulinPeakTime", 45)
-            } else if (insulinInterface.id === Insulin.InsulinType.OREF_FREE_PEAK) {
-                val peakTime: Int = preferences.get(IntKey.InsulinOrefPeak)
+            else if (insulinType == InsulinType.OREF_RAPID_ACTING)
+                json.put("curve", "rapid-acting")
+            else {
+                val peakTime: Int = iCfg.peak
                 json.put("curve", if (peakTime > 50) "rapid-acting" else "ultra-rapid")
                 json.put("useCustomPeakTime", true)
                 json.put("insulinPeakTime", peakTime)
@@ -159,7 +176,6 @@ class ATProfile(profile: Profile, var localInsulin: LocalInsulin, val injector: 
     fun data(circadian: Boolean = false): PureProfile? {
         val json: JSONObject = profile.toPureNsJson(dateUtil)
         try {
-            json.put("dia", dia)
             if (circadian) {
                 json.put("sens", jsonArray(pumpProfile.isfBlocks, avgISF / pumpProfileAvgISF))
                 json.put("carbratio", jsonArray(pumpProfile.icBlocks, avgIC / pumpProfileAvgIC))
@@ -186,7 +202,7 @@ class ATProfile(profile: Profile, var localInsulin: LocalInsulin, val injector: 
             json.put("defaultProfile", profileName)
             json.put("store", store)
             json.put("startDate", dateUtil.toISOAsUTC(dateUtil.now()))
-            profileStore = instantiator.provideProfileStore(json)
+            profileStore = profileStoreProvider.get().with(json)
         } catch (e: JSONException) {
             aapsLogger.error(LTag.CORE, e.stackTraceToString())
         }
@@ -245,29 +261,5 @@ class ATProfile(profile: Profile, var localInsulin: LocalInsulin, val injector: 
             avgValue /= secondPerDay.toDouble()
             return avgValue
         }
-    }
-
-    init {
-        injector.androidInjector().inject(this)
-        this.profile = profile as ProfileSealed
-        circadianProfile = profile
-        isValid = profile.isValid
-        if (isValid) {
-            //initialize tuned value with current profile values
-            var minBasal = 1.0
-            for (h in 0..23) {
-                basal[h] = Round.roundTo(profile.basalBlocks.blockValueBySeconds(T.hours(h.toLong()).secs().toInt(), 1.0, 0), 0.001)
-                minBasal = min(minBasal, basal[h])
-            }
-            ic = avgIC
-            isf = avgISF
-            if (ic * isf * minBasal == 0.0)     // Additional validity check to avoid error later in AutotunePrep
-                isValid = false
-            pumpProfile = profile
-            pumpProfileAvgIC = avgIC
-            pumpProfileAvgISF = avgISF
-        }
-        dia = localInsulin.dia
-        peak = localInsulin.peak
     }
 }

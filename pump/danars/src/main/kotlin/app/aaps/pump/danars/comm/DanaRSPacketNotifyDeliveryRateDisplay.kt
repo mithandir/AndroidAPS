@@ -1,22 +1,21 @@
 package app.aaps.pump.danars.comm
 
+import app.aaps.core.interfaces.insulin.ConcentrationHelper
+import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
+import app.aaps.core.interfaces.pump.BolusProgressData
+import app.aaps.core.interfaces.pump.PumpInsulin
 import app.aaps.pump.dana.DanaPump
-import dagger.android.HasAndroidInjector
-import info.nightscout.androidaps.danars.encryption.BleEncryption
+import app.aaps.pump.danars.encryption.BleEncryption
 import javax.inject.Inject
 import kotlin.math.min
 
-class DanaRSPacketNotifyDeliveryRateDisplay(
-    injector: HasAndroidInjector
-) : DanaRSPacket(injector) {
-
-    @Inject lateinit var rxBus: RxBus
-    @Inject lateinit var rh: ResourceHelper
-    @Inject lateinit var danaPump: DanaPump
+class DanaRSPacketNotifyDeliveryRateDisplay @Inject constructor(
+    private val aapsLogger: AAPSLogger,
+    private val ch: ConcentrationHelper,
+    private val bolusProgressData: BolusProgressData,
+    private val danaPump: DanaPump
+) : DanaRSPacket() {
 
     init {
         type = BleEncryption.DANAR_PACKET__TYPE_NOTIFY
@@ -26,13 +25,8 @@ class DanaRSPacketNotifyDeliveryRateDisplay(
     override fun handleMessage(data: ByteArray) {
         val deliveredInsulin = byteArrayToInt(getBytes(data, DATA_START, 2)) / 100.0
         danaPump.bolusProgressLastTimeStamp = System.currentTimeMillis()
-        danaPump.bolusingTreatment?.insulin = deliveredInsulin
-        val bolusingEvent = EventOverviewBolusProgress
-        bolusingEvent.status = rh.gs(app.aaps.core.ui.R.string.bolus_delivering, deliveredInsulin)
-        bolusingEvent.t = danaPump.bolusingTreatment
-        bolusingEvent.percent = min((deliveredInsulin / danaPump.bolusAmountToBeDelivered * 100).toInt(), 100)
-        failed = bolusingEvent.percent < 100
-        rxBus.send(bolusingEvent)
+        failed = deliveredInsulin < danaPump.bolusingDetailedBolusInfo!!.insulin
+        bolusProgressData.updateProgress(PumpInsulin(deliveredInsulin))
         aapsLogger.debug(LTag.PUMPCOMM, "Delivered insulin so far: $deliveredInsulin")
     }
 

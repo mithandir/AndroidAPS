@@ -1,8 +1,8 @@
 package app.aaps.pump.danar.comm
 
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
 import dagger.android.HasAndroidInjector
+import kotlinx.coroutines.runBlocking
 
 class MsgError(
     injector: HasAndroidInjector
@@ -24,10 +24,9 @@ class MsgError(
             8       -> errorString = rh.gs(app.aaps.pump.dana.R.string.batterydischarged)
         }
         if (errorCode < 8) { // bolus delivering stopped
-            val bolusingEvent = EventOverviewBolusProgress
             danaPump.bolusStopped = true
-            bolusingEvent.status = errorString
-            rxBus.send(bolusingEvent)
+            val currentPercent = bolusProgressData.state.value?.percent ?: 0
+            bolusProgressData.updateProgress(currentPercent, errorString)
             // at least on Occlusion pump stops communication. Try to force reconnecting
             activePlugin.activePump.disconnect("Error from pump received")
             failed = true
@@ -35,6 +34,6 @@ class MsgError(
             failed = false
         }
         aapsLogger.debug(LTag.PUMPCOMM, "Error detected: $errorString")
-        pumpSync.insertAnnouncement(errorString, null, danaPump.pumpType(), danaPump.serialNumber)
+        runBlocking { pumpSync.insertAnnouncement(errorString, null, danaPump.pumpType(), danaPump.serialNumber) }
     }
 }

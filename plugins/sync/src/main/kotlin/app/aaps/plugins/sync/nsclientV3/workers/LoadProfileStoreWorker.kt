@@ -4,14 +4,12 @@ import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
+import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.JsonHelper
-import app.aaps.core.utils.receivers.DataWorkerStorage
 import app.aaps.plugins.sync.nsShared.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import kotlinx.coroutines.Dispatchers
@@ -24,12 +22,10 @@ class LoadProfileStoreWorker(
     params: WorkerParameters
 ) : LoggingWorker(context, params, Dispatchers.IO) {
 
-    @Inject lateinit var dataWorkerStorage: DataWorkerStorage
-    @Inject lateinit var rxBus: RxBus
-    @Inject lateinit var context: Context
     @Inject lateinit var nsClientV3Plugin: NSClientV3Plugin
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var nsIncomingDataProcessor: NsIncomingDataProcessor
+    @Inject lateinit var nsClientRepository: NSClientRepository
 
     override suspend fun doWorkAndLog(): Result {
         val nsAndroidClient = nsClientV3Plugin.nsAndroidClient ?: return Result.failure(workDataOf("Error" to "AndroidClient is null"))
@@ -55,21 +51,21 @@ class LoadProfileStoreWorker(
                     { nsClientV3Plugin.lastLoadedSrvModified.collections.profile = dateUtil.now() }
                     nsClientV3Plugin.storeLastLoadedSrvModified()
                     aapsLogger.debug(LTag.NSCLIENT, "PROFILE: $profile")
-                    rxBus.send(EventNSClientNewLog("◄ RCV", "1 PROFILE from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}"))
+                    nsClientRepository.addLog("◄ RCV", "1 PROFILE from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}")
                     nsIncomingDataProcessor.processProfile(profile, nsClientV3Plugin.doingFullSync)
                 } else {
-                    rxBus.send(EventNSClientNewLog("◄ RCV PROFILE END", "No new data from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}"))
+                    nsClientRepository.addLog("◄ RCV PROFILE END", "No new data from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}")
                 }
             } else {
-                rxBus.send(EventNSClientNewLog("◄ RCV PROFILE END", "No data from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}"))
+                nsClientRepository.addLog("◄ RCV PROFILE END", "No data from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}")
             }
         } catch (error: Exception) {
             aapsLogger.error("Error: ", error)
-            rxBus.send(EventNSClientNewLog("◄ ERROR", error.localizedMessage))
+            nsClientRepository.addLog("◄ ERROR", error.localizedMessage)
             return Result.failure(workDataOf("Error" to error.localizedMessage))
         }
 
         return Result.success()
     }
 
-}
+}

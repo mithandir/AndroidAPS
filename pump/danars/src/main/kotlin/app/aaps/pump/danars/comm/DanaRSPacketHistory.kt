@@ -1,29 +1,31 @@
 package app.aaps.pump.danars.comm
 
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventDanaRSyncStatus
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.pump.dana.DanaPump
 import app.aaps.pump.dana.comm.RecordTypes
 import app.aaps.pump.dana.database.DanaHistoryRecord
 import app.aaps.pump.dana.database.DanaHistoryRecordDao
-import dagger.android.HasAndroidInjector
+import app.aaps.pump.dana.events.EventDanaRSyncStatus
+import kotlinx.coroutines.runBlocking
 import org.joda.time.DateTime
 import java.util.Calendar
 import java.util.GregorianCalendar
-import javax.inject.Inject
 
-abstract class DanaRSPacketHistory(
-    injector: HasAndroidInjector,
-    protected val from: Long
-) : DanaRSPacket(injector) {
+abstract class DanaRSPacketHistory internal constructor(
+    private val aapsLogger: AAPSLogger,
+    private val dateUtil: DateUtil,
+    private val rxBus: RxBus,
+    private val danaHistoryRecordDao: DanaHistoryRecordDao,
+    private val pumpSync: PumpSync,
+    private val danaPump: DanaPump
+) : DanaRSPacket() {
 
-    @Inject lateinit var rxBus: RxBus
-    @Inject lateinit var danaHistoryRecordDao: DanaHistoryRecordDao
-    @Inject lateinit var pumpSync: PumpSync
-    @Inject lateinit var danaPump: DanaPump
+    protected var from: Long = 0
 
     protected var year = 0
     protected var month = 0
@@ -32,13 +34,14 @@ abstract class DanaRSPacketHistory(
     protected var min = 0
     protected var sec = 0
 
-    var done = false
+    @Volatile var done = false
     var totalCount = 0
     val danaRHistoryRecord = DanaHistoryRecord(0)
 
-    init {
+    fun with(from: Long) = this.also {
+        it.from = from
         val cal = GregorianCalendar()
-        if (from != 0L) cal.timeInMillis = from
+        if (it.from != 0L) cal.timeInMillis = it.from
         else cal[2000, 0, 1, 0, 0] = 0
         year = cal[Calendar.YEAR] - 1900 - 100
         month = cal[Calendar.MONTH] + 1
@@ -227,15 +230,17 @@ abstract class DanaRSPacketHistory(
             danaHistoryRecordDao.createOrUpdate(danaRHistoryRecord)
             //If it is a TDD, store it for stats also.
             if (danaRHistoryRecord.code == RecordTypes.RECORD_TYPE_DAILY) {
-                pumpSync.createOrUpdateTotalDailyDose(
-                    timestamp = danaRHistoryRecord.timestamp,
-                    bolusAmount = danaRHistoryRecord.dailyBolus,
-                    basalAmount = danaRHistoryRecord.dailyBasal,
-                    totalAmount = 0.0,
-                    pumpId = null,
-                    pumpType = danaPump.pumpType(),
-                    danaPump.serialNumber
-                )
+                runBlocking {
+                    pumpSync.createOrUpdateTotalDailyDose(
+                        timestamp = danaRHistoryRecord.timestamp,
+                        bolusAmount = danaRHistoryRecord.dailyBolus,
+                        basalAmount = danaRHistoryRecord.dailyBasal,
+                        totalAmount = 0.0,
+                        pumpId = null,
+                        pumpType = danaPump.pumpType(),
+                        danaPump.serialNumber
+                    )
+                }
             }
             rxBus.send(EventDanaRSyncStatus(dateUtil.dateAndTimeString(danaRHistoryRecord.timestamp) + " " + messageType))
         }

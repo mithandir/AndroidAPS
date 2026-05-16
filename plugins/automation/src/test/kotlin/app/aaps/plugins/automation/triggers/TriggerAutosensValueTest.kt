@@ -2,20 +2,21 @@ package app.aaps.plugins.automation.triggers
 
 import app.aaps.core.keys.DoubleKey
 import app.aaps.implementation.iob.AutosensDataObject
-import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.elements.Comparator
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.jupiter.api.Test
-import org.mockito.Mockito.`when`
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.whenever
 import org.skyscreamer.jsonassert.JSONAssert
 
 class TriggerAutosensValueTest : TriggerTestBase() {
 
-    @Test fun shouldRunTest() {
-        `when`(preferences.get(DoubleKey.AutosensMax)).thenReturn(1.2)
-        `when`(preferences.get(DoubleKey.AutosensMin)).thenReturn(0.7)
-        `when`(autosensDataStore.getLastAutosensData(anyObject(), anyObject(), anyObject())).thenReturn(generateAutosensData())
+    @Test fun shouldRunTest() = runTest {
+        whenever(preferences.get(DoubleKey.AutosensMax)).thenReturn(1.2)
+        whenever(preferences.get(DoubleKey.AutosensMin)).thenReturn(0.7)
+        whenever(autosensDataStore.getLastAutosensData(anyOrNull(), anyOrNull(), anyOrNull())).thenReturn(generateAutosensData())
         var t = TriggerAutosensValue(injector)
         t.autosens.value = 110.0
         t.comparator.value = Comparator.Compare.IS_EQUAL
@@ -55,21 +56,21 @@ class TriggerAutosensValueTest : TriggerTestBase() {
         t.autosens.value = 390.0
         t.comparator.value = Comparator.Compare.IS_EQUAL_OR_LESSER
         assertThat(t.shouldRun()).isTrue()
-        `when`(autosensDataStore.getLastAutosensData(anyObject(), anyObject(), anyObject())).thenReturn(AutosensDataObject(aapsLogger, preferences, dateUtil))
+        whenever(autosensDataStore.getLastAutosensData(anyOrNull(), anyOrNull(), anyOrNull())).thenReturn(AutosensDataObject(aapsLogger, preferences, dateUtil))
         t = TriggerAutosensValue(injector)
         t.autosens.value = 80.0
         t.comparator.value = Comparator.Compare.IS_EQUAL_OR_LESSER
         assertThat(t.shouldRun()).isFalse()
 
         // Test autosensData == null and Comparator == IS_NOT_AVAILABLE
-        `when`(autosensDataStore.getLastAutosensData(anyObject(), anyObject(), anyObject())).thenReturn(null)
+        whenever(autosensDataStore.getLastAutosensData(anyOrNull(), anyOrNull(), anyOrNull())).thenReturn(null)
         t = TriggerAutosensValue(injector)
         t.comparator.value = Comparator.Compare.IS_NOT_AVAILABLE
         assertThat(t.shouldRun()).isTrue()
     }
 
     @Test
-    fun copyConstructorTest() {
+    fun copyConstructorTest() = runTest {
         val t = TriggerAutosensValue(injector)
         t.autosens.value = 213.0
         t.comparator.value = Comparator.Compare.IS_EQUAL_OR_LESSER
@@ -81,7 +82,7 @@ class TriggerAutosensValueTest : TriggerTestBase() {
     private var asJson = "{\"data\":{\"comparator\":\"IS_EQUAL\",\"value\":410},\"type\":\"TriggerAutosensValue\"}"
 
     @Test
-    fun toJSONTest() {
+    fun toJSONTest() = runTest {
         val t = TriggerAutosensValue(injector)
         t.autosens.value = 410.0
         t.comparator.value = Comparator.Compare.IS_EQUAL
@@ -89,17 +90,13 @@ class TriggerAutosensValueTest : TriggerTestBase() {
     }
 
     @Test
-    fun fromJSONTest() {
+    fun fromJSONTest() = runTest {
         val t = TriggerAutosensValue(injector)
         t.autosens.value = 410.0
         t.comparator.value = Comparator.Compare.IS_EQUAL
         val t2 = TriggerDummy(injector).instantiate(JSONObject(t.toJSON())) as TriggerAutosensValue
         assertThat(t2.comparator.value).isEqualTo(Comparator.Compare.IS_EQUAL)
         assertThat(t2.autosens.value).isWithin(0.01).of(410.0)
-    }
-
-    @Test fun iconTest() {
-        assertThat(TriggerAutosensValue(injector).icon().get()).isEqualTo(R.drawable.ic_as)
     }
 
     private fun generateAutosensData() = AutosensDataObject(aapsLogger, preferences, dateUtil)
