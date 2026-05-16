@@ -90,7 +90,6 @@
     <string name="loopisdisabled">הלולאה מושבתת</string>
     <string name="alarm">התראה</string>
     <string name="disableloop">השבתת לולאה</string>
-    <string name="enableloop">הפעלת לולאה</string>
     <string name="resumeloop">חידוש לולאה</string>
     <string name="suspendloop">השהיית הלולאה</string>
     <string name="duration_min_label">משך [min]</string>
@@ -165,7 +164,6 @@
     <string name="canceling_tbr_failed">ביטול בזאלי זמני נכשל</string>
     <string name="canceling_eb_failed">ביטול בולוס ממושך נכשל</string>
     <string name="virtualpump_uploadstatus_title">שלח את סטטוס המשאבה לנייטסקאוט או ל-Tidepool</string>
-    <string name="suspendloop_label">השבתת \\ השהיית לולאה</string>
     <string name="iob_label">אינסולין פעיל בגוף (IOB)</string>
     <string name="loopstatus_targets">ערכי מטרה:</string>
     <string name="loopstatus_OAPS_result">תוצאות OAPS:</string>
@@ -285,7 +283,6 @@
     <string name="uel_lgs_loop_mode">מצב השהיה עקב סוכר נמוך</string>
     <string name="uel_open_loop_mode">מצב לולאה פתוחה</string>
     <string name="uel_loop_disabled">לולאה מושבתת</string>
-    <string name="uel_loop_enabled">לולאה מופעלת</string>
     <string name="uel_reconnect">חיבור מחדש</string>
     <string name="uel_disconnect">ניתוק</string>
     <string name="uel_resume">חידוש</string>
@@ -401,6 +398,12 @@
     <string name="formatPercent">%1$.0f%%</string>
     <string name="basal">בזאלי</string>
     <string name="basalpct">בזאלי %</string>
+    <string name="sensitivity">רגישות</string>
+    <string name="isf_for_carbs">פקטור הרגישות של המחשבון ושל ספיגת פחמימות: %1$.1f</string>
+    <string name="autosens_long">ערך Autosens: %.0f%%</string>
+    <string name="autosens_short">רגישות: %.0f%%</string>
+    <string name="algorithm_long">ערך Autosens באלגוריתם: %.0f%%</string>
+    <string name="algorithm_short">אלגו\': %.0f%%</string>
     <string name="a11y_file">קובץ</string>
     <string name="a11y_user">משתמש</string>
     <!-- Autotune -->
@@ -502,6 +505,8 @@
     <string name="password_preferences_decrypt_prompt">אתם תתבקשו למלא סיסמה ראשית שתשמש לפיענוח ההעדפות המיובאות.</string>
     <!-- <unattended_export> -->
     <!-- <unattended_export result messages> -->
+    <string name="export_result_message_exported">הגדרות יוצאו</string>
+    <string name="export_result_message_failed">יצוא ההגדרות נכשל!</string>
     <!-- NumberPicker -->
     <string name="a11y_min_button_description">הפחתת %1$s ב-%2$s</string>
     <string name="a11y_plus_button_description">תוספת %1$s ב-%2$s</string>

@@ -10,7 +10,7 @@ import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDummy
 import app.aaps.plugins.automation.actions.ActionLoopDisable
-import app.aaps.plugins.automation.actions.ActionLoopEnable
+import app.aaps.plugins.automation.actions.ActionLoopClosed
 import app.aaps.plugins.automation.actions.ActionLoopResume
 import app.aaps.plugins.automation.actions.ActionLoopSuspend
 import app.aaps.plugins.automation.actions.ActionNotification
@@ -50,6 +50,7 @@ import app.aaps.plugins.automation.triggers.TriggerPumpLastConnection
 import app.aaps.plugins.automation.triggers.TriggerRecurringTime
 import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
 import app.aaps.plugins.automation.triggers.TriggerSensorAge
+import app.aaps.plugins.automation.triggers.TriggerStepsCount
 import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
@@ -103,11 +104,12 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun triggerTime(): TriggerTime
     @ContributesAndroidInjector abstract fun triggerTimeRangeInjector(): TriggerTimeRange
     @ContributesAndroidInjector abstract fun triggerWifiSsidInjector(): TriggerWifiSsid
+    @ContributesAndroidInjector abstract fun triggerStepsCountInjector(): TriggerStepsCount
 
     @ContributesAndroidInjector abstract fun actionInjector(): Action
     @ContributesAndroidInjector abstract fun actionStopProcessingInjector(): ActionStopProcessing
     @ContributesAndroidInjector abstract fun actionLoopDisableInjector(): ActionLoopDisable
-    @ContributesAndroidInjector abstract fun actionLoopEnableInjector(): ActionLoopEnable
+    @ContributesAndroidInjector abstract fun actionLoopEnableInjector(): ActionLoopClosed
     @ContributesAndroidInjector abstract fun actionLoopResumeInjector(): ActionLoopResume
     @ContributesAndroidInjector abstract fun actionLoopSuspendInjector(): ActionLoopSuspend
     @ContributesAndroidInjector abstract fun actionNotificationInjector(): ActionNotification

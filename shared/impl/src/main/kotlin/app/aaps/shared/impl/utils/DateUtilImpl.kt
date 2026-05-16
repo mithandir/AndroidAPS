@@ -1,14 +1,14 @@
 package app.aaps.shared.impl.utils
 
 import android.content.Context
-import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.collection.LongSparseArray
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.R
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.SafeParse
+import app.aaps.core.utils.pump.ThreadUtil
+import org.apache.commons.lang3.ThreadUtils
 import org.apache.commons.lang3.time.DateUtils.isSameDay
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormat
@@ -21,6 +21,9 @@ import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Calendar
 import java.util.Date
 import java.util.EnumSet
@@ -32,6 +35,7 @@ import java.util.regex.Pattern
 import java.util.stream.Collectors
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -109,8 +113,9 @@ class DateUtilImpl @Inject constructor(private val context: Context) : DateUtil 
     }
 
     override fun dateString(mills: Long): String {
-        val df = DateFormat.getDateInstance(DateFormat.SHORT)
-        return df.format(mills)
+        val zonedTime = ZonedDateTime.ofInstant(Instant.ofEpochMilli(mills), ZoneId.systemDefault())
+        val dateFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT)
+        return zonedTime.format(dateFormatter)
     }
 
     override fun dateStringRelative(mills: Long, rh: ResourceHelper): String {
@@ -214,19 +219,31 @@ class DateUtilImpl @Inject constructor(private val context: Context) : DateUtil 
     override fun minAgo(rh: ResourceHelper, time: Long?): String {
         if (time == null) return ""
         val minutes = ((now() - time) / 1000 / 60).toInt()
-        return rh.gs(R.string.minago, minutes)
+        return if (abs(minutes) > 9999) "" else rh.gs(R.string.minago, minutes)
+    }
+
+    override fun minOrSecAgo(rh: ResourceHelper, time: Long?): String {
+        if (time == null) return ""
+        //val minutes = ((now() - time) / 1000 / 60).toInt()
+        val seconds = (now() - time) / 1000
+        if (seconds > 99) {
+            return rh.gs(R.string.minago, (seconds / 60).toInt())
+        } else {
+            return rh.gs(R.string.secago, seconds.toInt())
+        }
     }
 
     override fun minAgoShort(time: Long?): String {
         if (time == null) return ""
         val minutes = ((time - now()) / 1000 / 60).toInt()
-        return (if (minutes > 0) "+" else "") + minutes
+        return if (abs(minutes) > 9999) ""
+        else "(" + (if (minutes > 0) "+" else "") + minutes + ")"
     }
 
     override fun minAgoLong(rh: ResourceHelper, time: Long?): String {
         if (time == null) return ""
         val minutes = ((now() - time) / 1000 / 60).toInt()
-        return rh.gs(R.string.minago_long, minutes)
+        return if (abs(minutes) > 9999) "" else rh.gs(R.string.minago_long, minutes)
     }
 
     override fun hourAgo(time: Long, rh: ResourceHelper): String {
@@ -309,6 +326,9 @@ class DateUtilImpl @Inject constructor(private val context: Context) : DateUtil 
 
     override fun isSameDay(timestamp1: Long, timestamp2: Long) = isSameDay(Date(timestamp1), Date(timestamp2))
 
+    override fun isAfterNoon(): Boolean =
+        Instant.now().atZone(ZoneId.systemDefault()).hour >= 12
+
     override fun isSameDayGroup(timestamp1: Long, timestamp2: Long): Boolean {
         val now = now()
         if (now in (timestamp1 + 1) until timestamp2 || now in (timestamp2 + 1) until timestamp1)
@@ -341,6 +361,7 @@ class DateUtilImpl @Inject constructor(private val context: Context) : DateUtil 
             hours = rh.gs(R.string.shorthour)
             minutes = rh.gs(R.string.shortminute)
         }
+        if (T.msecs(milliseconds).days() > 1000) return rh.gs(R.string.forever)
         var result = ""
         if (diff.getOrDefault(TimeUnit.DAYS, -1) > 0) result += diff[TimeUnit.DAYS].toString() + days
         if (diff.getOrDefault(TimeUnit.HOURS, -1) > 0) result += diff[TimeUnit.HOURS].toString() + hours
@@ -397,7 +418,7 @@ class DateUtilImpl @Inject constructor(private val context: Context) : DateUtil 
         }
         val thisDf: DecimalFormat?
         // use singleton if on ui thread otherwise allocate new as DecimalFormat is not thread safe
-        if (Thread.currentThread().id == 1L) {
+        if (ThreadUtil.threadId() == 1L) {
             if (df == null) {
                 val localDf = DecimalFormat("#", dfs)
                 localDf.minimumIntegerDigits = 1
@@ -418,7 +439,6 @@ class DateUtilImpl @Inject constructor(private val context: Context) : DateUtil 
         return df.format(hour.toLong()) + ":" + df.format(minutes.toLong())
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun timeZoneByOffset(offsetInMilliseconds: Long): TimeZone =
         TimeZone.getTimeZone(
             if (offsetInMilliseconds == 0L) ZoneId.of("UTC")
@@ -440,7 +460,10 @@ class DateUtilImpl @Inject constructor(private val context: Context) : DateUtil 
     }
 
     override fun mergeUtcDateToTimestamp(timestamp: Long, dateUtcMillis: Long): Long {
-        val selected = Calendar.getInstance().apply { timeInMillis = dateUtcMillis }
+        // - TimeZone.getDefault().rawOffset is only workaround for MaterialDatePicket bug
+        // Remove after lib fix
+        // https://github.com/material-components/material-components-android/issues/4373
+        val selected = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = dateUtcMillis }
         return Calendar.getInstance().apply {
             timeInMillis = timestamp
             set(Calendar.YEAR, selected[Calendar.YEAR])

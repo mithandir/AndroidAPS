@@ -50,7 +50,6 @@
     <string name="smscommunicator_tt_canceled">Dočasný cieľ úspešne zrušený</string>
     <string name="smscommunicator_remote_commands_allowed">Povoliť príkazy na diaľku cez SMS</string>
     <string name="smscommunicator_loop_has_been_disabled">Uzavretý okruh bol deaktivovaný</string>
-    <string name="smscommunicator_loop_has_been_enabled">Uzavretý okruh bol aktivovaný</string>
     <string name="smscommunicator_loop_is_enabled">Uzavretý okruh je aktivovaný</string>
     <string name="smscommunicator_pump_connect_with_code">Ak chcete pripojiť pumpu, odpovedzte pomocou SMS s kódom %1$s</string>
     <string name="smscommunicator_pump_connect_fail">Pripojenie k pumpe zlyhalo</string>
@@ -66,7 +65,6 @@
     <string name="smscommunicator_basal_pct_reply_with_code">Pre spustenie bazálu %1$d%% na %2$d min odpovedzte SMS s kódom %3$s</string>
     <string name="smscommunicator_suspend_reply_with_code">Pre pozastavenie uzavretého okruhu na %1$d minút odpovedaj SMS s kódom %2$s</string>
     <string name="smscommunicator_loop_resume_reply_with_code">Pre obnovenie uzavretého okruhu, odpovedzte SMS s kódom %1$s</string>
-    <string name="smscommunicator_loop_enable_reply_with_code">Pre povolenie uzavretého okruhu, odpovedzte SMS s kódom %1$s</string>
     <string name="smscommunicator_loop_disable_reply_with_code">Pre zakázanie uzavretého okruhu, odpovedzte SMS s kódom %1$s</string>
     <string name="smscommunicator_tempbasal_set">Dočasný bazál %1$.2fJI/h spustený na %2$d minút</string>
     <string name="smscommunicator_extended_set">Predĺžený bolus %1$.2fJI na %2$d min úspešne spustený</string>
@@ -153,8 +151,8 @@
     <string name="dia_short">DIA</string>
     <string name="target_short">CIEĽ</string>
     <string name="basal_short">BAZ</string>
-    <string name="isf_dynamic_label">Váš algoritmus môže poskytnúť dynamický výpočet ISF. Nižšie uvedené hodnoty sú použité iba ako záložné v prípade chýbajúcich údajov</string>
-    <string name="ic_dynamic_label">Váš algoritmus môže poskytnúť dynamický výpočet ISF. Nižšie uvedené hodnoty sú použité iba ako záložné v prípade chýbajúcich údajov</string>
+    <string name="isf_dynamic_label_warning">Váš algoritmus môže poskytnúť dynamický výpočet ISF. Nižšie uvedené hodnoty sú použité iba ako záložné v prípade chýbajúcich údajov, alebo iba ako referenčné hodnoty</string>
+    <string name="ic_dynamic_label_warning">Váš algoritmus môže poskytnúť dynamický výpočet ISF. Nižšie uvedené hodnoty sú použité iba ako záložné v prípade chýbajúcich údajov, alebo iba ako referenčné hodnoty</string>
     <!-- Actions -->
     <string name="actions">Akcie</string>
     <string name="description_actions">Niektoré tlačidlá na rýchly prístup do spoločných funkcií</string>
@@ -217,8 +215,7 @@
     <string name="description_overview">Zobrazenie aktuálneho stavu vašeho uzavretého okruhu a tlačidlá k najpoužívanejším ovládacím prvkom</string>
     <string name="overview_buttons_selection">Tlačidlá</string>
     <string name="show_calibration_button_summary">Odošle kalibráciu do xDrip+ (presvedčte sa, či je v xDrip+ povolené „Prijímať kalibrácie z iných aplikácií“ v nastavení \"Komunikácia s inými aplikáciami).</string>
-    <string name="show_cgm_button_summary">Otvorí xDrip+ (môžete použiť tlačítko späť na návrat do AAPS).</string>
-    <string name="error_starting_cgm">Nie je možné spustiť aplikáciu CGM. Uistite sa, že je nainštalovaná.</string>
+    <string name="show_cgm_button_summary">Otvorí xDrip+, alebo aplikáciu Dexcom (môžete použiť tlačítko späť na návrat do AAPS).</string>
     <string name="not_available_full">Nedostupný</string>
     <string name="constraints_violation">Mimo povolený rozsah</string>
     <string name="change_your_input">Zmeňte zadanie!</string>
