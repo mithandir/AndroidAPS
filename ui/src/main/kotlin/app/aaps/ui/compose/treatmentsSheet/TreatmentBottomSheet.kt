@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import app.aaps.core.ui.compose.ExcludeFromJacocoGeneratedReport
 import app.aaps.core.ui.compose.TonalIcon
 import app.aaps.core.ui.compose.consumeOverscroll
 import app.aaps.core.ui.compose.icons.IcBolus
@@ -41,9 +42,8 @@ import app.aaps.core.ui.compose.navigation.color
 import app.aaps.core.ui.compose.navigation.descriptionResId
 import app.aaps.core.ui.compose.navigation.icon
 import app.aaps.core.ui.compose.navigation.labelResId
-import app.aaps.core.ui.compose.preference.AdaptivePreferenceList
+import app.aaps.core.ui.compose.preference.PreferenceSheetContent
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
-import app.aaps.core.ui.compose.preference.ProvidePreferenceTheme
 import app.aaps.ui.compose.main.QuickWizardItem
 import app.aaps.core.ui.R as CoreUiR
 
@@ -296,17 +296,8 @@ private fun TreatmentSettingsContent(
                     contentDescription = stringResource(CoreUiR.string.back)
                 )
             }
-            Text(
-                text = stringResource(CoreUiR.string.settings),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
-        ProvidePreferenceTheme {
-            AdaptivePreferenceList(
-                items = settingsDef.items
-            )
-        }
+        PreferenceSheetContent(settingsDef = settingsDef)
     }
 }
 
@@ -353,6 +344,7 @@ private fun TreatmentItem(
     )
 }
 
+@ExcludeFromJacocoGeneratedReport
 @Preview(showBackground = true)
 @Composable
 private fun TreatmentBottomSheetPreview() {
