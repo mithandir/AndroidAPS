@@ -70,6 +70,8 @@ import app.aaps.compose.navigation.AppRoute
 import app.aaps.compose.navigation.appNavGraph
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
+import app.aaps.core.interfaces.clientcontrol.ActionProgress
+import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.configuration.InitProgress
@@ -95,18 +97,21 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.source.DexcomBoyda
+import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
-import app.aaps.core.keys.interfaces.PreferenceVisibilityContext
+import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.crypto.CryptoUtil
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.core.ui.compose.LocalMasterControlAllowed
+import app.aaps.core.ui.compose.LocalMasterReachable
 import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.LocalProfileUtil
 import app.aaps.core.ui.compose.LocalSnackbarHostState
@@ -128,10 +133,12 @@ import app.aaps.core.ui.search.SearchableItem
 import app.aaps.core.utils.isRunningRealPumpTest
 import app.aaps.implementation.plugin.PluginStore
 import app.aaps.implementation.protection.BiometricCheck
+import app.aaps.plugins.automation.AutomationRuntime
 import app.aaps.plugins.configuration.setupwizard.SWDefinition
 import app.aaps.plugins.source.DexcomPlugin
 import app.aaps.plugins.source.activities.RequestDexcomPermissionActivity
 import app.aaps.ui.compose.careDialog.CareportalEventType
+import app.aaps.ui.compose.clientcontrol.ClientControlPendingDialog
 import app.aaps.ui.compose.configuration.ConfigurationViewModel
 import app.aaps.ui.compose.fillDialog.FillPreselect
 import app.aaps.ui.compose.insulinManagement.InsulinManagementViewModel
@@ -142,6 +149,7 @@ import app.aaps.ui.compose.maintenance.ImportViewModel
 import app.aaps.ui.compose.maintenance.MaintenanceViewModel
 import app.aaps.ui.compose.manageSheet.ManageSheetHost
 import app.aaps.ui.compose.manageSheet.ManageViewModel
+import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import app.aaps.ui.compose.permissionsSheet.PermissionsSheet
@@ -182,11 +190,14 @@ class ComposeMainActivity : AppCompatActivity() {
     @Inject lateinit var passwordCheck: PasswordCheck
     @Inject lateinit var cryptoUtil: CryptoUtil
     @Inject lateinit var activePlugin: ActivePlugin
+    @Inject lateinit var nsClient: NsClient
+    @Inject lateinit var clientControlActionDispatcher: ClientControlActionDispatcher
+    @Inject lateinit var automationRuntime: AutomationRuntime
     @Inject lateinit var configBuilder: ConfigBuilder
     @Inject lateinit var swDefinition: SWDefinition
     @Inject lateinit var config: Config
     @Inject lateinit var profileUtil: ProfileUtil
-    @Inject lateinit var visibilityContext: PreferenceVisibilityContext
+    @Inject lateinit var visibilityContext: VisibilityContext
     @Inject lateinit var dexcomBoyda: DexcomBoyda
     @Inject lateinit var iobCobCalculator: IobCobCalculator
     @Inject lateinit var persistenceLayer: PersistenceLayer
@@ -199,6 +210,7 @@ class ComposeMainActivity : AppCompatActivity() {
     @Inject lateinit var bgQualityCheck: BgQualityCheck
     @Inject lateinit var objectives: Objectives
     @Inject lateinit var graphViewModelFactory: GraphViewModel.Factory
+    @Inject lateinit var chipsViewModelFactory: ChipsViewModel.Factory
     @Inject lateinit var overviewDataCache: OverviewDataCache
 
     private var accessTree: ActivityResultLauncher<Uri?>? = null
@@ -215,6 +227,9 @@ class ComposeMainActivity : AppCompatActivity() {
     private val loopActionViewModel: LoopActionViewModel by viewModels()
     private val graphViewModel: GraphViewModel by viewModels {
         viewModelFactory { initializer { graphViewModelFactory.create(overviewDataCache) } }
+    }
+    private val chipsViewModel: ChipsViewModel by viewModels {
+        viewModelFactory { initializer { chipsViewModelFactory.create(overviewDataCache) } }
     }
     private val treatmentsViewModel: TreatmentsViewModel by viewModels()
     private val insulinManagementViewModel: InsulinManagementViewModel by viewModels()
@@ -292,11 +307,29 @@ class ComposeMainActivity : AppCompatActivity() {
     @Composable
     private fun MainContent() {
         val navController = rememberNavController().also { this.navController = it }
+        val masterReachable by nsClient.masterReachable.collectAsStateWithLifecycle()
+        val masterControlAllowed by nsClient.masterControlAllowed.collectAsStateWithLifecycle()
+
+        // Global self-heal — event-driven, NOT a poll (a timer would keep the CPU awake). Probe once when
+        // we go offline, and again on each navigation while offline, so any screen/dialog the user opens
+        // re-checks. (The WS reconnect and a failed action also probe; all internally rate-limited.)
+        // `masterReachable` is lifecycle-collected and navigation only happens in the foreground, so this
+        // never runs in the background.
+        LaunchedEffect(masterReachable) {
+            if (!masterReachable) nsClient.requestMasterProbe()
+        }
+        LaunchedEffect(navController) {
+            navController.currentBackStackEntryFlow.collect {
+                if (!nsClient.masterReachable.value) nsClient.requestMasterProbe()
+            }
+        }
 
         CompositionLocalProvider(
             LocalPreferences provides preferences,
             LocalDateUtil provides dateUtil,
             LocalConfig provides config,
+            LocalMasterReachable provides masterReachable,
+            LocalMasterControlAllowed provides masterControlAllowed,
             LocalProfileUtil provides profileUtil,
             LocalCheckPassword provides cryptoUtil::checkPassword,
             LocalHashPassword provides cryptoUtil::hashPassword,
@@ -338,6 +371,19 @@ class ComposeMainActivity : AppCompatActivity() {
                         // Root-level dialog host — subscribes to EventShowDialog and
                         // renders one modal dialog at a time.
                         GlobalDialogHost(rxBus = rxBus)
+
+                        // The single app-level pending modal for ANY client-control round-trip
+                        // (insulin / scenes / synced-preference edits). Hosted once here, feature-
+                        // independent; round-trips are single-in-flight so at most one shows. Applied is
+                        // cleared by the dispatcher (silent); Rejected/Unconfirmed stay until dismissed.
+                        val pendingAction by clientControlActionDispatcher.pendingAction.collectAsStateWithLifecycle()
+                        pendingAction?.let { pending ->
+                            if (pending.progress !is ActionProgress.Applied)
+                                ClientControlPendingDialog(
+                                    pending = pending,
+                                    onDismiss = { clientControlActionDispatcher.dismissActionProgress() }
+                                )
+                        }
                     }
                 }
             }
@@ -543,6 +589,8 @@ class ComposeMainActivity : AppCompatActivity() {
 
         val state by mainViewModel.uiState.collectAsStateWithLifecycle()
         val bolusState by bolusProgressData.state.collectAsStateWithLifecycle()
+        val pumpStatusBanner by pumpCommunicationStatus.statusBannerFlow.collectAsStateWithLifecycle()
+        val pumpQueueStatus by pumpCommunicationStatus.queueStatusFlow.collectAsStateWithLifecycle()
 
         NavHost(
             navController = navController,
@@ -696,15 +744,21 @@ class ComposeMainActivity : AppCompatActivity() {
                     onQuickLaunchActionClick = { action -> handleQuickLaunchAction(action, navController) },
                     calcProgress = calcProgress,
                     graphViewModel = graphViewModel,
+                    chipsViewModel = chipsViewModel,
                     statusLightsDef = builtInSearchables.statusLights,
                     treatmentButtonsDef = builtInSearchables.treatmentButtons,
                     // Pump activity
                     bolusState = bolusState,
-                    pumpStatusText = pumpCommunicationStatus.statusBanner()?.text ?: "",
-                    queueStatusText = pumpCommunicationStatus.queueStatus(),
-                    isPumpCommunicating = pumpCommunicationStatus.statusBanner() != null,
+                    pumpStatusText = pumpStatusBanner?.text ?: "",
+                    queueStatusText = pumpQueueStatus,
+                    isPumpCommunicating = pumpStatusBanner != null,
                     onStopBolus = {
-                        commandQueue.cancelAllBoluses(null)
+                        if (config.AAPSCLIENT) {
+                            clientControlActionDispatcher.stopBolus()
+                            bolusProgressData.stopPressed()
+                        } else {
+                            commandQueue.cancelAllBoluses(null)
+                        }
                     }
                 )
             }
@@ -724,9 +778,11 @@ class ComposeMainActivity : AppCompatActivity() {
                 statsViewModel = statsViewModel,
                 siteRotationManagementViewModel = siteRotationManagementViewModel,
                 graphViewModel = graphViewModel,
+                chipsViewModel = chipsViewModel,
                 swDefinition = swDefinition,
                 rxBus = rxBus,
                 activePlugin = activePlugin,
+                automationRuntime = automationRuntime,
                 preferences = preferences,
                 rh = rh,
                 builtInSearchables = builtInSearchables,
@@ -759,17 +815,24 @@ class ComposeMainActivity : AppCompatActivity() {
         // Modal bolus progress overlay — shown above everything for standard bolus
         bolusState?.let { state ->
             if (!state.isSMB) {
-                val pumpStatus = pumpCommunicationStatus.statusBanner()?.text ?: ""
-                val queueStatus = pumpCommunicationStatus.queueStatus()
+                val pumpStatus = pumpStatusBanner?.text ?: ""
+                val queueStatus = pumpQueueStatus
                 PumpActivityDialog(
                     bolusState = state,
                     pumpStatus = pumpStatus,
                     queueStatus = queueStatus,
                     isModal = true,
                     onStop = {
-                        commandQueue.cancelAllBoluses(null)
+                        if (config.AAPSCLIENT) {
+                            clientControlActionDispatcher.stopBolus()
+                            bolusProgressData.stopPressed()
+                        } else {
+                            commandQueue.cancelAllBoluses(null)
+                        }
                     },
-                    onDismiss = { }
+                    // Only reachable via the stalled-state Dismiss button (client/follower): hides the
+                    // local mirror dialog. Delivery belongs to the master — this does not touch the pump.
+                    onDismiss = { bolusProgressData.clear() }
                 )
             }
         }
@@ -816,7 +879,7 @@ class ComposeMainActivity : AppCompatActivity() {
     private fun refreshOnResume() {
         manageViewModel.refreshState()
         permissionsViewModel.refresh()
-        if (notificationManager.notifications.value.any { it.level == NotificationLevel.URGENT }) {
+        if (notificationManager.notifications.value.any { it.level.priority <= NotificationLevel.IMPORTANT.priority }) {
             _autoShowNotifications.value = true
         }
         if (!isProtectionCheckActive) {
@@ -1041,6 +1104,9 @@ class ComposeMainActivity : AppCompatActivity() {
             ElementType.FOOD_MANAGEMENT         -> navController.navigate(AppRoute.FoodManagement.route)
             ElementType.RUNNING_MODE            -> navController.navigate(AppRoute.RunningMode.route)
             ElementType.SCENE_MANAGEMENT        -> navController.navigate(AppRoute.SceneList.route)
+            ElementType.AUTOMATION_MANAGEMENT   -> navController.navigate(AppRoute.AutomationList.route)
+            ElementType.AUTHORIZED_CLIENTS      -> navController.navigate(AppRoute.AuthorizedClients.route)
+            ElementType.PAIR_WITH_MASTER        -> navController.navigate(AppRoute.PairWithMaster.route)
             ElementType.QUICK_LAUNCH_CONFIG     -> navController.navigate(AppRoute.QuickLaunchConfig.route)
 
             // Treatment dialogs

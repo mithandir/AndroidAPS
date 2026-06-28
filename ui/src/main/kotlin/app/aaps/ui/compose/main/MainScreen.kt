@@ -51,14 +51,15 @@ import app.aaps.core.ui.compose.dialogs.ThreeButtonDialog
 import app.aaps.core.ui.compose.navigation.ElementType
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
-import app.aaps.ui.compose.alertDialogs.AboutAlertDialog
-import app.aaps.ui.compose.alertDialogs.AboutDialogData
+import app.aaps.ui.compose.aboutDialog.AboutAlertDialog
+import app.aaps.ui.compose.aboutDialog.AboutDialogData
 import app.aaps.ui.compose.maintenance.ImportSource
 import app.aaps.ui.compose.maintenance.MaintenanceDialogs
 import app.aaps.ui.compose.maintenance.MaintenanceViewModel
 import app.aaps.ui.compose.manageSheet.ManageSheetState
 import app.aaps.ui.compose.manageSheet.ManageViewModel
 import app.aaps.ui.compose.overview.OverviewScreen
+import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
@@ -127,6 +128,7 @@ fun MainScreen(
     onQuickLaunchActionClick: (QuickLaunchAction) -> Unit = {},
     calcProgress: Int,
     graphViewModel: GraphViewModel,
+    chipsViewModel: ChipsViewModel,
     statusLightsDef: PreferenceSubScreenDef,
     treatmentButtonsDef: PreferenceSubScreenDef,
     // Pump activity
@@ -224,6 +226,11 @@ fun MainScreen(
 
                 val activeSceneState by mainViewModel.activeSceneState.collectAsStateWithLifecycle()
                 val sceneExpired by mainViewModel.sceneExpired.collectAsStateWithLifecycle()
+                val masterReachable by mainViewModel.masterReachable.collectAsStateWithLifecycle()
+                // Stable pairing signal — hides the mutating nav buttons on an unpaired client.
+                val masterOrPairedClient by mainViewModel.masterOrPairedClient.collectAsStateWithLifecycle()
+                // (Probe-while-offline is now global — see ComposeMainActivity. This screen still reads
+                // masterReachable for its own gating.)
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Main content
                     OverviewScreen(
@@ -238,6 +245,7 @@ fun MainScreen(
                         tempTargetRecordId = uiState.tempTargetRecordId,
                         runningMode = uiState.runningMode,
                         runningModeText = uiState.runningModeText,
+                        runningModeRemaining = uiState.runningModeRemaining,
                         runningModeProgress = uiState.runningModeProgress,
                         runningModeRecordId = uiState.runningModeRecordId,
                         tbrState = uiState.tbrState,
@@ -245,11 +253,13 @@ fun MainScreen(
                         isSimpleMode = uiState.isSimpleMode,
                         calcProgress = calcProgress,
                         graphViewModel = graphViewModel,
+                        chipsViewModel = chipsViewModel,
                         manageViewModel = manageViewModel,
                         statusViewModel = statusViewModel,
                         statusLightsDef = statusLightsDef,
                         onNavigate = onNavigate,
                         onTbrChipClick = mainViewModel::showTbrInfo,
+                        onIobChipClick = chipsViewModel::showIobInfo,
                         notifications = notifications,
                         onDismissNotification = onDismissNotification,
                         onNotificationActionClick = onNotificationActionClick,
@@ -259,6 +269,8 @@ fun MainScreen(
                         sceneExpired = sceneExpired,
                         onEndScene = { mainViewModel.requestSceneDeactivation() },
                         onDismissScene = { mainViewModel.dismissExpiredScene() },
+                        endSceneEnabled = masterReachable,
+                        commandsAllowed = masterOrPairedClient,
                         formatDuration = mainViewModel::formatDuration,
                         paddingValues = contentPadding,
                         fabBottomOffset = if (hasToolbar && showChrome) 56.dp else 0.dp,
@@ -331,6 +343,7 @@ fun MainScreen(
                             onSearchQueryChange = onSearchQueryChange,
                             onSearchClear = onSearchClear,
                             onSearchActiveChange = onSearchActiveChange,
+                            isSimpleMode = uiState.isSimpleMode,
                             // Guard against transient 0 heights during AnimatedVisibility exit:
                             // the resulting contentPadding invalidation can schedule a remeasure
                             // on a node that's losing its owner — crashes in dispatchDraw.
@@ -356,12 +369,18 @@ fun MainScreen(
                                 treatmentViewModel.refreshState()
                                 showTreatmentSheet = true
                             },
+                            masterOrPairedClient = masterOrPairedClient,
                             quickWizardCount = uiState.quickWizardItems.size,
                             onAutomationClick = {
                                 scenesViewModel.refreshState()
                                 showAutomationSheet = true
                             },
-                            automationCount = automationState.items.size + automationState.sceneItems.size,
+                            // Total drives nav-button visibility (button stays visible whenever
+                            // scenes/automation exist, even if currently un-activatable).
+                            // Count drives the badge — only items the user can act on right now.
+                            automationTotal = automationState.items.size + automationState.sceneItems.size,
+                            automationCount = automationState.items.count { it.activationReason == null } +
+                                automationState.sceneItems.count { it.activationReason == null },
                             pumpSetupPlugin = pumpSetupPlugin,
                             bgSetupPlugin = bgSetupPlugin,
                             bgQualityBadgeIcon = bgQualityBadgeIcon,
@@ -465,6 +484,7 @@ fun MainScreen(
             ThreeButtonDialog(
                 title = confirmation.title,
                 message = confirmation.message,
+                icon = confirmation.icon,
                 primaryLabel = confirmation.confirmLabel ?: stringResource(R.string.ok),
                 onPrimary = { mainViewModel.executeConfirmableAction(confirmation.onConfirmAction) },
                 secondaryLabel = secondaryLabel,
@@ -475,6 +495,7 @@ fun MainScreen(
             OkCancelDialog(
                 title = confirmation.title,
                 message = confirmation.message,
+                icon = confirmation.icon,
                 onConfirm = { mainViewModel.executeConfirmableAction(confirmation.onConfirmAction) },
                 onDismiss = { mainViewModel.dismissActionConfirmation() }
             )
