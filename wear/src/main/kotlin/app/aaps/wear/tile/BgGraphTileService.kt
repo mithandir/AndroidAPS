@@ -7,6 +7,9 @@ import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.withTranslation
 import androidx.wear.protolayout.ActionBuilders
 import androidx.wear.protolayout.DimensionBuilders
 import androidx.wear.protolayout.LayoutElementBuilders
@@ -17,10 +20,12 @@ import androidx.wear.tiles.RequestBuilders.TileRequest
 import androidx.wear.tiles.ResourceBuilders
 import androidx.wear.tiles.TileBuilders.Tile
 import androidx.wear.tiles.TileService
+import app.aaps.core.interfaces.di.injectMetroMembers
+import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.wear.BuildConfig
 import app.aaps.wear.R
 import app.aaps.wear.data.ComplicationData
 import app.aaps.wear.data.ComplicationDataRepository
-import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.wear.interaction.activities.BgGraphActivity
 import app.aaps.wear.interaction.activities.LoopStatusActivity
 import app.aaps.wear.interaction.activities.formatTtDuration
@@ -29,7 +34,7 @@ import app.aaps.wear.interaction.menus.MainMenuActivity
 import app.aaps.wear.interaction.utils.DisplayFormat
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import dagger.android.AndroidInjection
+import dev.zacsweers.metro.Inject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,9 +47,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
-import javax.inject.Inject
-import androidx.core.graphics.createBitmap
-import androidx.core.graphics.withTranslation
 
 class BgGraphTileService : TileService() {
 
@@ -61,7 +63,7 @@ class BgGraphTileService : TileService() {
     private val initialRender = CompletableDeferred<ByteArray>()
 
     override fun onCreate() {
-        AndroidInjection.inject(this)
+        injectMetroMembers(this)
         super.onCreate()
 
         // Render current data immediately so onResourcesRequest finds a warm cache
@@ -248,16 +250,34 @@ class BgGraphTileService : TileService() {
             else                -> android.graphics.Color.rgb(255, 0, 0)
         }
         val secondaryArgb = android.graphics.Color.rgb(170, 170, 170)
-        val iobArgb   = android.graphics.Color.rgb(30, 136, 229)
-        val cobArgb   = android.graphics.Color.rgb(255, 109, 0)
-        val basalArgb = android.graphics.Color.rgb(144, 202, 249)
+        val iobArgb   = android.graphics.Color.rgb(103, 223, 232)
+        val cobArgb   = android.graphics.Color.rgb(251, 140, 0)
+        val basalArgb = secondaryArgb
         val targetArgb = when (statusData.tempTargetLevel) {
             1    -> android.graphics.Color.rgb(119, 221, 119)
             2    -> android.graphics.Color.rgb(253, 216, 53)
             else -> secondaryArgb
         }
 
-        val spacerPx = 16 * density
+        // Only AAPSClient flavors need this (distinguishing several installed side by side) — for
+        // a single-install AAPS/Pumpcontrol build it's purely decorative, and on this tile (unlike
+        // the button-grid tiles) it visibly costs graph space, so it's not worth showing there.
+        val showFlavorHeader = when (BuildConfig.FLAVOR) {
+            "aapsclient", "aapsclient2", "aapsclient3" -> true
+            else                                        -> false
+        }
+        val flavorLabelHeightPx = if (showFlavorHeader) 5 * density else 0f
+        val spacerPx = 16 * density + flavorLabelHeightPx
+        if (showFlavorHeader) {
+            val flavorColor = ContextCompat.getColor(this, R.color.flavor_header_color)
+            val flavorPaint = Paint().apply {
+                color = flavorColor
+                textSize = 9 * density
+                textAlign = Paint.Align.CENTER
+                isAntiAlias = true
+            }
+            canvas.drawText(getString(R.string.app_name), widthPx / 2f, 2 * density + flavorPaint.textSize * 0.8f, flavorPaint)
+        }
         val bgPaint = Paint().apply {
             color = bgArgb
             textSize = bgSizePx

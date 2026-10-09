@@ -3,16 +3,10 @@ package app.aaps.wear.complications
 import android.app.PendingIntent
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
-import androidx.wear.watchface.complications.data.CountUpTimeReference
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
-import androidx.wear.watchface.complications.data.TimeDifferenceComplicationText
-import androidx.wear.watchface.complications.data.TimeDifferenceStyle
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.rx.weardata.EventData
-import dagger.android.AndroidInjection
-import java.time.Instant
-import java.util.concurrent.TimeUnit
 
 /**
  * SGV Large Complication
@@ -23,11 +17,6 @@ import java.util.concurrent.TimeUnit
  * - Time auto-updates every minute (battery efficient)
  */
 class SgvLargeComplication : ModernBaseComplicationProviderService() {
-
-    override fun onCreate() {
-        AndroidInjection.inject(this)
-        super.onCreate()
-    }
 
     override fun buildComplicationData(
         type: ComplicationType,
@@ -50,15 +39,7 @@ class SgvLargeComplication : ModernBaseComplicationProviderService() {
         bgData: EventData.SingleBg,
         pendingIntent: PendingIntent
     ): ShortTextComplicationData {
-        val titleText = TimeDifferenceComplicationText.Builder(
-            style = TimeDifferenceStyle.SHORT_SINGLE_UNIT,
-            // SHORT_SINGLE_UNIT rounds to nearest; adding 30_000ms makes it round down instead,
-            // matching CWF, AAPS overview, and BgGraphActivity
-            countUpTimeReference = CountUpTimeReference(Instant.ofEpochMilli(bgData.timeStamp + 30_000L))
-        )
-            .setMinimumTimeUnit(TimeUnit.MINUTES)
-            .setText("^1 ${bgData.slopeArrow}\uFE0E")
-            .build()
+        val titleText = buildCountUpText(bgData.timeStamp, "^1 ${bgData.slopeArrow}\uFE0E")
 
         return ShortTextComplicationData.Builder(
             text = PlainComplicationText.Builder(text = bgData.sgvString).build(),

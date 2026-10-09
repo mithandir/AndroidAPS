@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.readableDuration
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.compose.StatusLevel
@@ -44,6 +45,7 @@ import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkServiceData
 import app.aaps.pump.common.hw.rileylink.service.tasks.ResetRileyLinkConfigurationTask
 import app.aaps.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
+import app.aaps.pump.omnipod.common.OMNIPOD_DURATION_LABELS
 import app.aaps.pump.omnipod.common.queue.command.CommandHandleTimeChange
 import app.aaps.pump.omnipod.common.queue.command.CommandPlayTestBeep
 import app.aaps.pump.omnipod.common.queue.command.CommandResumeDelivery
@@ -62,8 +64,11 @@ import app.aaps.pump.omnipod.eros.manager.AapsOmnipodErosManager
 import app.aaps.pump.omnipod.eros.queue.command.CommandGetPodStatus
 import app.aaps.pump.omnipod.eros.util.AapsOmnipodUtil
 import app.aaps.pump.omnipod.eros.util.OmnipodAlertUtil
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.zacsweers.metro.AppScope
+import dev.zacsweers.metro.ContributesIntoMap
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.binding
+import dev.zacsweers.metrox.viewmodel.ViewModelKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -79,15 +84,17 @@ import kotlinx.coroutines.launch
 import org.joda.time.DateTime
 import org.joda.time.Duration
 import java.util.TimeZone
-import javax.inject.Inject
-import javax.inject.Provider
 import app.aaps.core.ui.R as CoreUiR
 import app.aaps.pump.common.hw.rileylink.R as RileyLinkR
 import app.aaps.pump.omnipod.common.R as CommonR
 
 @Stable
-@HiltViewModel
-class ErosOverviewViewModel @Inject constructor(
+// Registers itself: @ViewModelKey infers the key from the class. Deliberately unscoped, so each screen
+// gets its own - the same shape the other pump view models use.
+@ContributesIntoMap(AppScope::class, binding = binding<ViewModel>())
+@ViewModelKey
+@Inject
+class ErosOverviewViewModel(
     private val rh: ResourceHelper,
     private val podStateManager: ErosPodStateManager,
     private val omnipodErosPumpPlugin: OmnipodErosPumpPlugin,
@@ -105,29 +112,35 @@ class ErosOverviewViewModel @Inject constructor(
     private val uiInteraction: UiInteraction,
     private val config: Config,
     private val aapsLogger: AAPSLogger,
-    private val resetRileyLinkConfigurationTaskProvider: Provider<ResetRileyLinkConfigurationTask>,
+    private val resetRileyLinkConfigurationTaskProvider: () -> ResetRileyLinkConfigurationTask,
     private val ch: ConcentrationHelper,
-    @ApplicationContext private val context: Context
+    private val context: Context
 ) : ViewModel() {
 
     companion object {
 
         private const val PLACEHOLDER = "-"
+
+        /**
+         * The pod keeps delivering for this long after [OmnipodConstants.NOMINAL_POD_LIFE],
+         * up to a total lifetime of [OmnipodConstants.SERVICE_DURATION].
+         */
+        private val POD_GRACE_PERIOD: Duration = OmnipodConstants.SERVICE_DURATION.minus(OmnipodConstants.NOMINAL_POD_LIFE)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val communicationStatus = PumpCommunicationStatus(rxBus, commandQueue, context, scope)
+    private val communicationStatus = PumpCommunicationStatus(rxBus, commandQueue, rh, scope)
 
     private val _events = MutableSharedFlow<OmnipodOverviewEvent>(extraBufferCapacity = 5)
     val events: SharedFlow<OmnipodOverviewEvent> = _events
 
     private val omnipodRefresh = MutableStateFlow(0L).also { flow ->
         scope.launch {
-            rxBus.toFlow(EventOmnipodErosPumpValuesChanged::class.java)
+            rxBus.toFlow(EventOmnipodErosPumpValuesChanged::class)
                 .collect { flow.value = System.currentTimeMillis() }
         }
         scope.launch {
-            rxBus.toFlow(EventRileyLinkDeviceStatusChange::class.java)
+            rxBus.toFlow(EventRileyLinkDeviceStatusChange::class)
                 .collect { flow.value = System.currentTimeMillis() }
         }
     }
@@ -177,6 +190,7 @@ class ErosOverviewViewModel @Inject constructor(
             add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_firmware_version), value = PLACEHOLDER))
             add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_time_on_pod), value = PLACEHOLDER))
             add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_pod_expiry_date), value = PLACEHOLDER))
+            add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_pod_hard_end_date), value = PLACEHOLDER))
             add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_pod_status), value = buildPodStatusText(), level = buildPodStatusLevel()))
             add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_last_connection), value = buildLastConnection().first, level = buildLastConnection().second))
             add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_last_bolus), value = PLACEHOLDER))
@@ -206,6 +220,12 @@ class ErosOverviewViewModel @Inject constructor(
             val expiryValue = expiresAt?.let { readableZonedTime(it) } ?: PLACEHOLDER
             val expiryLevel = if (expiresAt != null && DateTime.now().isAfter(expiresAt)) StatusLevel.CRITICAL else StatusLevel.NORMAL
             add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_pod_expiry_date), value = expiryValue, level = expiryLevel))
+
+            // Pod hard end (end of the grace period following expiry)
+            val hardEndAt = expiresAt?.plus(POD_GRACE_PERIOD)
+            val hardEndValue = hardEndAt?.let { readableZonedTime(it) } ?: PLACEHOLDER
+            val hardEndLevel = if (hardEndAt != null && DateTime.now().isAfter(hardEndAt)) StatusLevel.CRITICAL else StatusLevel.NORMAL
+            add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_pod_hard_end_date), value = hardEndValue, level = hardEndLevel))
 
             // Pod status
             add(PumpInfoRow(label = rh.gs(CommonR.string.omnipod_common_overview_pod_status), value = buildPodStatusText(), level = buildPodStatusLevel()))
@@ -282,28 +302,28 @@ class ErosOverviewViewModel @Inject constructor(
                 label = rh.gs(CommonR.string.omnipod_common_overview_button_silence_alerts),
                 icon = Icons.Filled.NotificationsOff,
                 enabled = rlReady && queueEmpty,
-                visible = !omnipodManager.isAutomaticallyAcknowledgeAlertsEnabled && podStateManager.isPodRunning && (podStateManager.hasActiveAlerts() || commandQueue.isCustomCommandInQueue(CommandSilenceAlerts::class.java)),
+                visible = !omnipodManager.isAutomaticallyAcknowledgeAlertsEnabled && podStateManager.isPodRunning && (podStateManager.hasActiveAlerts() || commandQueue.isCustomCommandInQueue(CommandSilenceAlerts::class)),
                 onClick = { runCustomCommandWithErrorDialog(CommandSilenceAlerts(), rh.gs(CommonR.string.omnipod_common_error_failed_to_silence_alerts)) }
             ),
             PumpAction(
                 label = rh.gs(CommonR.string.omnipod_common_overview_button_resume_delivery),
                 icon = Icons.Filled.PlayArrow,
                 enabled = rlReady && queueEmpty,
-                visible = podStateManager.isPodRunning && (podStateManager.isSuspended || commandQueue.isCustomCommandInQueue(CommandResumeDelivery::class.java)),
+                visible = podStateManager.isPodRunning && (podStateManager.isSuspended || commandQueue.isCustomCommandInQueue(CommandResumeDelivery::class)),
                 onClick = { runCustomCommandWithErrorDialog(CommandResumeDelivery(), rh.gs(CommonR.string.omnipod_common_error_failed_to_resume_delivery)) }
             ),
             PumpAction(
                 label = rh.gs(CommonR.string.omnipod_common_overview_button_suspend_delivery),
                 icon = Icons.Filled.Pause,
                 enabled = podStateManager.isPodRunning && !podStateManager.isSuspended && rlReady && queueEmpty,
-                visible = omnipodManager.isSuspendDeliveryButtonEnabled && podStateManager.isPodRunning && (!podStateManager.isSuspended || commandQueue.isCustomCommandInQueue(CommandSuspendDelivery::class.java)),
+                visible = omnipodManager.isSuspendDeliveryButtonEnabled && podStateManager.isPodRunning && (!podStateManager.isSuspended || commandQueue.isCustomCommandInQueue(CommandSuspendDelivery::class)),
                 onClick = { runCustomCommandWithErrorDialog(CommandSuspendDelivery(), rh.gs(CommonR.string.omnipod_common_error_failed_to_suspend_delivery)) }
             ),
             PumpAction(
                 label = rh.gs(CommonR.string.omnipod_common_overview_button_set_time),
                 icon = Icons.Filled.Schedule,
                 enabled = podStateManager.isPodRunning && !podStateManager.isSuspended && rlReady && queueEmpty,
-                visible = podStateManager.isPodRunning && (podStateManager.timeDeviatesMoreThan(Duration.standardMinutes(5)) || commandQueue.isCustomCommandInQueue(CommandHandleTimeChange::class.java)),
+                visible = podStateManager.isPodRunning && (podStateManager.timeDeviatesMoreThan(Duration.standardMinutes(5)) || commandQueue.isCustomCommandInQueue(CommandHandleTimeChange::class)),
                 onClick = { runCustomCommandWithErrorDialog(CommandHandleTimeChange(true), rh.gs(CommonR.string.omnipod_common_error_failed_to_set_time)) }
             )
         )
@@ -333,7 +353,7 @@ class ErosOverviewViewModel @Inject constructor(
                 label = rh.gs(CommonR.string.omnipod_common_pod_management_button_play_test_beep),
                 icon = Icons.AutoMirrored.Filled.VolumeUp,
                 category = ActionCategory.MANAGEMENT,
-                enabled = rlReady && !commandQueue.isCustomCommandInQueue(CommandPlayTestBeep::class.java),
+                enabled = rlReady && !commandQueue.isCustomCommandInQueue(CommandPlayTestBeep::class),
                 visible = podStateManager.isPodInitialized && podStateManager.activationProgress.isAtLeast(ActivationProgress.PAIRING_COMPLETED),
                 onClick = { runCustomCommandWithErrorDialog(CommandPlayTestBeep(), rh.gs(CommonR.string.omnipod_common_error_failed_to_play_test_beep)) }
             ),
@@ -365,7 +385,7 @@ class ErosOverviewViewModel @Inject constructor(
                 icon = Icons.Filled.RestartAlt,
                 category = ActionCategory.MANAGEMENT,
                 onClick = {
-                    serviceTaskExecutor.startTask(resetRileyLinkConfigurationTaskProvider.get())
+                    serviceTaskExecutor.startTask(resetRileyLinkConfigurationTaskProvider())
                     _events.tryEmit(OmnipodOverviewEvent.ShowSnackbar(rh.gs(RileyLinkR.string.rileylink_config_reset)))
                 }
             ),
@@ -396,7 +416,7 @@ class ErosOverviewViewModel @Inject constructor(
 
     private fun onDiscardPodClicked() {
         _events.tryEmit(
-            OmnipodOverviewEvent.ShowDialog(
+            OmnipodOverviewEvent.ConfirmDiscardPod(
                 rh.gs(CommonR.string.omnipod_common_pod_management_button_discard_pod),
                 rh.gs(CommonR.string.omnipod_common_pod_management_discard_pod_confirmation)
             )
@@ -508,7 +528,7 @@ class ErosOverviewViewModel @Inject constructor(
             return rh.gs(CoreUiR.string.overview_reservoir_concentration_value_over, ch.insulinAmountString(PumpInsulin(50.0))) to StatusLevel.NORMAL
         }
         val reservoirLevel = PumpInsulin(podStateManager.reservoirLevel)
-        val lowThreshold = (omnipodAlertUtil.lowReservoirAlertUnits ?: OmnipodConstants.DEFAULT_MAX_RESERVOIR_ALERT_THRESHOLD).toDouble()
+        val lowThreshold = (omnipodAlertUtil.getLowReservoirAlertUnits() ?: OmnipodConstants.DEFAULT_MAX_RESERVOIR_ALERT_THRESHOLD).toDouble()
         val text = ch.insulinAmountString(reservoirLevel)
         val level = if (ch.fromPump(reservoirLevel) < lowThreshold) StatusLevel.CRITICAL else StatusLevel.NORMAL
         return text to level
@@ -526,34 +546,8 @@ class ErosOverviewViewModel @Inject constructor(
         return rh.gs(CommonR.string.omnipod_common_time_with_timezone, dateUtil.dateAndTimeString(timeAsJavaDate.time), tzDisplayName)
     }
 
-    private fun readableDuration(dateTime: DateTime): String {
-        val duration = Duration(dateTime, DateTime.now())
-        val hours = duration.standardHours.toInt()
-        val minutes = duration.standardMinutes.toInt()
-        val seconds = duration.standardSeconds.toInt()
-        return when {
-            seconds < 10           -> rh.gs(CommonR.string.omnipod_common_moments_ago)
-            seconds < 60           -> rh.gs(CommonR.string.omnipod_common_less_than_a_minute_ago)
-            seconds < 60 * 60      -> rh.gs(CommonR.string.omnipod_common_time_ago, rh.gq(CommonR.plurals.omnipod_common_minutes, minutes, minutes))
-
-            seconds < 24 * 60 * 60 -> {
-                val minutesLeft = minutes % 60
-                if (minutesLeft > 0)
-                    rh.gs(CommonR.string.omnipod_common_time_ago, rh.gs(CommonR.string.omnipod_common_composite_time, rh.gq(CommonR.plurals.omnipod_common_hours, hours, hours), rh.gq(CommonR.plurals.omnipod_common_minutes, minutesLeft, minutesLeft)))
-                else
-                    rh.gs(CommonR.string.omnipod_common_time_ago, rh.gq(CommonR.plurals.omnipod_common_hours, hours, hours))
-            }
-
-            else                   -> {
-                val days = hours / 24
-                val hoursLeft = hours % 24
-                if (hoursLeft > 0)
-                    rh.gs(CommonR.string.omnipod_common_time_ago, rh.gs(CommonR.string.omnipod_common_composite_time, rh.gq(CommonR.plurals.omnipod_common_days, days, days), rh.gq(CommonR.plurals.omnipod_common_hours, hoursLeft, hoursLeft)))
-                else
-                    rh.gs(CommonR.string.omnipod_common_time_ago, rh.gq(CommonR.plurals.omnipod_common_days, days, days))
-            }
-        }
-    }
+    private fun readableDuration(dateTime: DateTime): String =
+        rh.readableDuration(DateTime.now().millis - dateTime.millis, OMNIPOD_DURATION_LABELS)
 
     private fun isQueueEmpty(): Boolean = commandQueue.size() == 0 && commandQueue.performing() == null
 

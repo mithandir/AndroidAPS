@@ -57,8 +57,8 @@ class EopatchPumpPluginBolusTest : EopatchTestBase() {
 
         plugin = EopatchPumpPlugin(
             aapsLogger, rh, preferences, commandQueue, aapsSchedulers, fabricPrivacy, dateUtil, pumpSync, patchManager, patchManagerExecutor,
-            alarmManager, eopatchPreferenceManager, notificationManager, pumpEnactResultProvider, patchConfig, normalBasalManager,
-            protectionCheck, blePreCheck, bolusProgressData
+            alarmManager, eopatchPreferenceManager, pumpEnactResultProvider, patchConfig, normalBasalManager,
+            protectionCheck, blePreCheck, bolusProgressData, mock()
         )
     }
 

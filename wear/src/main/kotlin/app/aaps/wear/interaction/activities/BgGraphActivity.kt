@@ -39,13 +39,15 @@ import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.curvedText
+import app.aaps.core.interfaces.di.injectMetroMembers
 import app.aaps.wear.R
 import app.aaps.wear.data.ComplicationData
 import app.aaps.wear.data.ComplicationDataRepository
+import app.aaps.wear.interaction.actions.CarbsOrange
+import app.aaps.wear.interaction.actions.InsulinBlue
 import app.aaps.wear.interaction.menus.MainMenuActivity
 import app.aaps.wear.interaction.utils.DisplayFormat
-import dagger.android.AndroidInjection
-import javax.inject.Inject
+import dev.zacsweers.metro.Inject
 
 class BgGraphActivity : AppCompatActivity() {
 
@@ -53,7 +55,7 @@ class BgGraphActivity : AppCompatActivity() {
     @Inject lateinit var displayFormat: DisplayFormat
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        AndroidInjection.inject(this)
+        injectMetroMembers(this)
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
@@ -166,9 +168,9 @@ private fun BgGraphScreen(repository: ComplicationDataRepository, displayFormat:
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "${statusData.iobSum}$insulinUnit", fontSize = statsFontSize, color = IobColor)
-                    Text(text = statusData.cob, fontSize = statsFontSize, color = CarbsColor)
-                    Text(text = basalText, fontSize = statsFontSize, color = BasalColor)
+                    Text(text = "${statusData.iobSum}$insulinUnit", fontSize = statsFontSize, color = InsulinBlue)
+                    Text(text = statusData.cob, fontSize = statsFontSize, color = CarbsOrange)
+                    Text(text = basalText, fontSize = statsFontSize, color = SecondaryText)
                     Text(text = targetText, fontSize = statsFontSize, color = when (statusData.tempTargetLevel) {
                         1    -> AutosensTargetColor
                         2    -> TempTargetColor

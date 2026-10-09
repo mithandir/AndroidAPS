@@ -14,6 +14,7 @@ import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.insulin.ConcentrationHelper
 import app.aaps.core.interfaces.insulin.InsulinManager
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -58,8 +59,12 @@ import app.aaps.pump.equil.manager.command.CmdSettingSet
 import app.aaps.pump.equil.manager.command.CmdStepSet
 import app.aaps.pump.equil.manager.command.CmdTimeSet
 import app.aaps.pump.equil.manager.command.CmdUnPair
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.zacsweers.metro.AppScope
+import dev.zacsweers.metro.ContributesIntoMap
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.binding
+import dev.zacsweers.metrox.viewmodel.ViewModelKey
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,11 +73,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-@HiltViewModel
-class EquilWizardViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+// Registers itself: @ViewModelKey infers the key from the class. No graph entry, and deliberately
+// unscoped so each screen gets its own.
+@ContributesIntoMap(AppScope::class, binding = binding<ViewModel>())
+@ViewModelKey
+@Inject
+class EquilWizardViewModel(
+    private val context: Context,
     private val rh: ResourceHelper,
     private val aapsLogger: AAPSLogger,
     private val preferences: Preferences,
@@ -83,6 +91,7 @@ class EquilWizardViewModel @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val equilHistoryRecordDao: EquilHistoryRecordDao,
     private val constraintsChecker: ConstraintsChecker,
+    private val ch: ConcentrationHelper,
     private val profileFunction: ProfileFunction,
     private val profileRepository: ProfileRepository,
     private val rxBus: RxBus,
@@ -528,8 +537,10 @@ class EquilWizardViewModel @Inject constructor(
 
     private suspend fun pumpSettings(address: String, serial: String) {
         val profile = pumpSync.expectedPumpState().profile
-        val maxBasal = if (profile != null) constraintsChecker.getMaxBasalAllowed(profile).value() else hardLimits.maxBasal()
-        val r = commandQueue.customCommand(CmdSettingSet(constraintsChecker.getMaxBolusAllowed().value(), maxBasal, aapsLogger, preferences, equilManager))
+        // The pod stores its thresholds in pump units (cU); convert the IU limits to cU first (no-op at U100).
+        val maxBasal = ch.toPumpRate(if (profile != null) constraintsChecker.getMaxBasalAllowed(profile).value() else hardLimits.maxBasal()).cU
+        val maxBolus = ch.toPump(constraintsChecker.getMaxBolusAllowed().value()).cU
+        val r = commandQueue.customCommand(CmdSettingSet(maxBolus, maxBasal, aapsLogger, preferences, equilManager))
         if (r.success) {
             equilManager.setAddress(address)
             equilManager.setSerialNumber(serial)
@@ -572,7 +583,11 @@ class EquilWizardViewModel @Inject constructor(
             resolvedAt = System.currentTimeMillis(),
             resolvedStatus = ResolvedResult.SUCCESS
         )
-        equilPumpPlugin.handler?.post {
+        // Was posted to the pump plugin's Handler. viewModelScope ties the write to the wizard that
+        // caused it, and the insert is a blocking Room call so it still needs a background
+        // dispatcher. The old form also dropped the record silently whenever the plugin was not
+        // started, because the handler was null then.
+        viewModelScope.launch(Dispatchers.IO) {
             equilHistoryRecordDao.insert(record)
         }
         moveStep(EquilWizardStep.ATTACH)
@@ -747,8 +762,10 @@ class EquilWizardViewModel @Inject constructor(
 
     private suspend fun setLimits() {
         val profile = pumpSync.expectedPumpState().profile
-        val maxBasal = if (profile != null) constraintsChecker.getMaxBasalAllowed(profile).value() else hardLimits.maxBasal()
-        val r = commandQueue.customCommand(CmdSettingSet(constraintsChecker.getMaxBolusAllowed().value(), maxBasal, aapsLogger, preferences, equilManager))
+        // The pod stores its thresholds in pump units (cU); convert the IU limits to cU first (no-op at U100).
+        val maxBasal = ch.toPumpRate(if (profile != null) constraintsChecker.getMaxBasalAllowed(profile).value() else hardLimits.maxBasal()).cU
+        val maxBolus = ch.toPump(constraintsChecker.getMaxBolusAllowed().value()).cU
+        val r = commandQueue.customCommand(CmdSettingSet(maxBolus, maxBasal, aapsLogger, preferences, equilManager))
         _isLoading.value = false
         if (r.success) {
             equilManager.setRunMode(RunMode.RUN)
@@ -802,7 +819,11 @@ class EquilWizardViewModel @Inject constructor(
             resolvedAt = System.currentTimeMillis(),
             resolvedStatus = ResolvedResult.SUCCESS
         )
-        equilPumpPlugin.handler?.post {
+        // Was posted to the pump plugin's Handler. viewModelScope ties the write to the wizard that
+        // caused it, and the insert is a blocking Room call so it still needs a background
+        // dispatcher. The old form also dropped the record silently whenever the plugin was not
+        // started, because the handler was null then.
+        viewModelScope.launch(Dispatchers.IO) {
             equilHistoryRecordDao.insert(record)
         }
         equilManager.setLastDataTime(System.currentTimeMillis())

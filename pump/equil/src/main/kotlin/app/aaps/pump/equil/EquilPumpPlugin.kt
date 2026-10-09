@@ -7,12 +7,17 @@ import app.aaps.core.data.pump.defs.ManufacturerType
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.pump.defs.TimeChangeType
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
+import app.aaps.core.interfaces.di.PumpDriver
+import app.aaps.core.interfaces.insulin.ConcentrationHelper
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.AlarmSound
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.notifications.NotificationManager
+import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.BlePreCheck
@@ -25,6 +30,7 @@ import app.aaps.core.interfaces.pump.PumpProfile
 import app.aaps.core.interfaces.pump.PumpRate
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.PumpSync.TemporaryBasalType
+import app.aaps.core.interfaces.pump.comment
 import app.aaps.core.interfaces.pump.defs.fillFor
 import app.aaps.core.interfaces.pump.mapState
 import app.aaps.core.interfaces.queue.Command
@@ -36,6 +42,7 @@ import app.aaps.core.interfaces.rx.collectResilient
 import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.icons.IcPluginEquil
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.pump.equil.compose.EquilComposeContent
@@ -58,6 +65,11 @@ import app.aaps.pump.equil.manager.command.CmdDevicesGet
 import app.aaps.pump.equil.manager.command.CmdSettingSet
 import app.aaps.pump.equil.manager.command.CmdTimeSet
 import app.aaps.pump.equil.manager.customCommands.CmdModeAndHistoryGet
+import dev.zacsweers.metro.AppScope
+import dev.zacsweers.metro.ContributesIntoMap
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
+import dev.zacsweers.metro.binding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -67,25 +79,30 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import org.joda.time.DateTime
 import org.joda.time.Duration
-import javax.inject.Inject
-import javax.inject.Provider
-import javax.inject.Singleton
+import kotlin.math.max
+import dev.zacsweers.metro.IntKey as MetroIntKey
 
-@Singleton
-class EquilPumpPlugin @Inject constructor(
+@ContributesIntoMap(AppScope::class, binding = binding<PluginBase>())
+@PumpDriver
+@MetroIntKey(1130)
+@SingleIn(AppScope::class)
+@Inject
+class EquilPumpPlugin(
     aapsLogger: AAPSLogger,
-    rh: ResourceHelper,
+    override val rh: ResourceHelper,
     preferences: Preferences,
     commandQueue: CommandQueue,
     private val rxBus: RxBus,
     private val context: Context,
     private val pumpSync: PumpSync,
     private val equilManager: EquilManager,
-    private val pumpEnactResultProvider: Provider<PumpEnactResult>,
+    private val pumpEnactResultProvider: () -> PumpEnactResult,
     private val constraintsChecker: ConstraintsChecker,
-    private val notificationManager: NotificationManager,
+    private val ch: ConcentrationHelper,
+    notificationManager: NotificationManager,
     private val protectionCheck: ProtectionCheck,
-    private val blePreCheck: BlePreCheck
+    private val blePreCheck: BlePreCheck,
+    private val config: Config
 ) : PumpPluginBase(
     pluginDescription = PluginDescription()
         .mainType(PluginType.PUMP)
@@ -93,18 +110,15 @@ class EquilPumpPlugin @Inject constructor(
             EquilComposeContent(
                 pluginName = rh.gs(R.string.equil_name),
                 protectionCheck = protectionCheck,
-                blePreCheck = blePreCheck
+                blePreCheck = blePreCheck,
+                config = config
             )
         }
         .icon(IcPluginEquil)
-        .pluginName(R.string.equil_name)
-        .shortName(R.string.equil_name_short)
-        .description(R.string.equil_pump_description),
-    ownPreferences = listOf(
-        EquilBooleanKey::class.java, EquilBooleanPreferenceKey::class.java, EquilIntPreferenceKey::class.java,
-        EquilStringKey::class.java
-    ),
-    aapsLogger, rh, preferences, commandQueue
+        .pluginName(TextRef.AndroidRes(R.string.equil_name))
+        .description(TextRef.AndroidRes(R.string.equil_pump_description)),
+    ownPreferences = EquilBooleanKey.entries + EquilBooleanPreferenceKey.entries + EquilIntPreferenceKey.entries + EquilStringKey.entries,
+    aapsLogger, rh, preferences, commandQueue, notificationManager
 ), Pump {
 
     override val pumpDescription: PumpDescription
@@ -120,18 +134,20 @@ class EquilPumpPlugin @Inject constructor(
         val newScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         scope = newScope
 
-        rxBus.toFlow(EventEquilDataChanged::class.java)
+        rxBus.toFlow(EventEquilDataChanged::class)
             .collectResilient(newScope, aapsLogger, LTag.PUMP) { playAlarm() }
 
-        rxBus.toFlow(EventEquilAlarm::class.java)
+        rxBus.toFlow(EventEquilAlarm::class)
             .collectResilient(newScope, aapsLogger, LTag.PUMP) { eventEquilError ->
-                commandQueue.performing()?.let {
-                    if (it.commandType == Command.CommandType.BOLUS) {
-                        aapsLogger.info(LTag.PUMPCOMM, "eventEquilError.tips====${eventEquilError.tips}")
-                        notificationManager.dismiss(NotificationId.EQUIL_ALARM)
-                        notificationManager.post(NotificationId.EQUIL_ALARM, eventEquilError.tips, soundRes = app.aaps.core.ui.R.raw.alarm)
-                        stopBolusDelivering()
-                    }
+                aapsLogger.info(LTag.PUMPCOMM, "eventEquilError.tips====${eventEquilError.tips}")
+                // Always surface the pump alarm - it is no longer gated on a bolus being in progress
+                // (alarms now come from the GATT history read on every connection, not just from an
+                // advertisement scan caught mid-bolus). See #5040.
+                notificationManager.dismiss(NotificationId.EQUIL_ALARM)
+                notificationManager.post(NotificationId.EQUIL_ALARM, eventEquilError.tips, sound = AlarmSound.ALARM)
+                // But only halt bolus tracking if a bolus is actually delivering.
+                if (commandQueue.performing()?.commandType == Command.CommandType.BOLUS) {
+                    stopBolusDelivering()
                 }
             }
         preferences.observe(EquilIntPreferenceKey.EquilTone).drop(1).collectResilient(newScope, aapsLogger, LTag.PUMP) {
@@ -140,9 +156,9 @@ class EquilPumpPlugin @Inject constructor(
             if (r.success) rxBus.send(EventShowSnackbar(rh.gs(R.string.equil_pump_updated), EventShowSnackbar.Type.Info))
             else rxBus.send(EventShowSnackbar(rh.gs(R.string.equil_error), EventShowSnackbar.Type.Error))
         }
-        // Re-program the pod thresholds whenever either the max bolus or the max basal changes.
-        // The pod enforces the basal threshold (see CmdSettingSet) as a hard limit, so it must stay
-        // in sync with getMaxBasalAllowed — otherwise a raised max basal won't take effect until the
+        // Re-program the pod thresholds whenever the max bolus or the max basal changes (and on profile
+        // set — see setNewBasalProfile). The pod enforces the basal threshold (see CmdSettingSet) as a
+        // hard limit, so it must stay in sync — otherwise a raised max basal won't take effect until the
         // next pod activation.
         preferences.observe(DoubleKey.SafetyMaxBolus).drop(1).collectResilient(newScope, aapsLogger, LTag.PUMP) { resendPumpSettings() }
         preferences.observe(DoubleKey.ApsMaxBasal).drop(1).collectResilient(newScope, aapsLogger, LTag.PUMP) { resendPumpSettings() }
@@ -150,8 +166,15 @@ class EquilPumpPlugin @Inject constructor(
 
     private suspend fun resendPumpSettings() {
         val profile = pumpSync.expectedPumpState().profile ?: return
+        // The pod stores its bolus/basal thresholds in pump units (cU) and enforces them against the cU
+        // basal schedule, so convert the IU limits to cU first (no-op at U100). Use the STABLE
+        // max(ApsMaxBasal, maxDailyBasal) for basal — the same ceiling OpenAPS caps temp basals to — not
+        // the time-of-day-dependent getMaxBasalAllowed (4x current basal), which can dip below the
+        // profile's own peak and starve the threshold.
+        val maxBolus = ch.toPump(constraintsChecker.getMaxBolusAllowed().value()).cU
+        val maxBasal = ch.toPumpRate(max(preferences.get(DoubleKey.ApsMaxBasal), profile.getMaxDailyBasal())).cU
         val r = commandQueue.customCommand(
-            CmdSettingSet(constraintsChecker.getMaxBolusAllowed().value(), constraintsChecker.getMaxBasalAllowed(profile).value(), aapsLogger, preferences, equilManager)
+            CmdSettingSet(maxBolus, maxBasal, aapsLogger, preferences, equilManager)
         )
         if (r.success) rxBus.send(EventShowSnackbar(rh.gs(R.string.equil_pump_updated), EventShowSnackbar.Type.Info))
         else rxBus.send(EventShowSnackbar(rh.gs(R.string.equil_error), EventShowSnackbar.Type.Error))
@@ -211,20 +234,23 @@ class EquilPumpPlugin @Inject constructor(
         val mode = equilManager.equilState?.runMode
         if (mode === RunMode.RUN || mode === RunMode.SUSPEND) {
             val basalSchedule = BasalSchedule.mapProfileToBasalSchedule(profile)
-            // The pod silently rejects a schedule whose rate exceeds the max basal threshold
-            // programmed via CmdSettingSet (getMaxBasalAllowed), surfacing only as a connection
-            // timeout. Reject it up front with a clear message instead of letting it hang.
-            val maxBasalAllowed = constraintsChecker.getMaxBasalAllowed(profile).value()
-            val peakRate = basalSchedule.getEntries().maxOf { it.rate }
-            if (peakRate > maxBasalAllowed + 0.001) {
-                return pumpEnactResultProvider.get().enacted(false).success(false)
-                    .comment(rh.gs(R.string.equil_basal_exceeds_max, peakRate, maxBasalAllowed))
-            }
+            // Raise the pod's max-basal threshold BEFORE programming the schedule, so the pod accepts both
+            // the base schedule and later temp basals. Use the STABLE max(ApsMaxBasal, maxDailyBasal) — the
+            // same ceiling OpenAPS caps temp basals to — NOT getMaxBasalAllowed, which is time-of-day
+            // dependent (4x current basal) and can dip below the profile's own peak, wrongly starving the
+            // threshold. Convert IU limits to pump units (cU) (no-op at U100). Sent directly (we're already
+            // inside a queued command — don't re-queue), gated on success (don't program the schedule on a
+            // stale threshold), and paced by EQUIL_BLE_NEXT_CMD like every other chained-command site.
+            val maxBolus = ch.toPump(constraintsChecker.getMaxBolusAllowed().value()).cU
+            val maxBasal = ch.toPumpRate(max(preferences.get(DoubleKey.ApsMaxBasal), profile.getMaxDailyBasal())).cU
+            val settingResult = equilManager.executeCmd(CmdSettingSet(maxBolus, maxBasal, aapsLogger, preferences, equilManager))
+            if (!settingResult.success) return settingResult
+            SystemClock.sleep(EquilConst.EQUIL_BLE_NEXT_CMD)
             val pumpEnactResult = equilManager.executeCmd(CmdBasalSet(basalSchedule, profile, aapsLogger, preferences, equilManager))
             if (pumpEnactResult.success) equilManager.equilState?.basalSchedule = basalSchedule
             return pumpEnactResult
         }
-        return pumpEnactResultProvider.get().enacted(false).success(false).comment(rh.gs(R.string.equil_pump_not_run))
+        return pumpEnactResultProvider().enacted(false).success(false).comment(rh.gs(R.string.equil_pump_not_run))
     }
 
     override fun isThisProfileSet(profile: PumpProfile): Boolean {
@@ -248,17 +274,17 @@ class EquilPumpPlugin @Inject constructor(
         if (detailedBolusInfo.insulin == 0.0) {
             // bolus requested
             aapsLogger.error("deliverTreatment: Invalid input: neither carbs nor insulin are set in treatment")
-            return pumpEnactResultProvider.get().success(false).enacted(false)
+            return pumpEnactResultProvider().success(false).enacted(false)
                 .bolusDelivered(0.0).comment("Invalid input")
         }
         val mode = equilManager.equilState?.runMode
         if (mode !== RunMode.RUN) {
-            return pumpEnactResultProvider.get().enacted(false).success(false)
+            return pumpEnactResultProvider().enacted(false).success(false)
                 .bolusDelivered(0.0).comment(rh.gs(R.string.equil_pump_not_run))
         }
         val lastInsulin = equilManager.equilState?.currentInsulin ?: 0
         return if (detailedBolusInfo.insulin > lastInsulin) {
-            pumpEnactResultProvider.get().success(false).enacted(false).bolusDelivered(0.0)
+            pumpEnactResultProvider().success(false).enacted(false).bolusDelivered(0.0)
                 .comment(R.string.equil_not_enough_insulin)
         } else deliverBolus(detailedBolusInfo)
     }
@@ -276,15 +302,15 @@ class EquilPumpPlugin @Inject constructor(
     ): PumpEnactResult {
         aapsLogger.debug(LTag.PUMPCOMM, "setTempBasalAbsolute=====$absoluteRate====$durationInMinutes===$enforceNew")
         if (durationInMinutes <= 0 || durationInMinutes % BASAL_STEP_DURATION.standardMinutes != 0L) {
-            return pumpEnactResultProvider.get().success(false)
+            return pumpEnactResultProvider().success(false)
                 .comment(rh.gs(R.string.equil_error_set_temp_basal_failed_validation, BASAL_STEP_DURATION.standardMinutes))
         }
         val mode = equilManager.equilState?.runMode
         if (mode !== RunMode.RUN) {
-            return pumpEnactResultProvider.get().enacted(false).success(false)
+            return pumpEnactResultProvider().enacted(false).success(false)
                 .comment(rh.gs(R.string.equil_pump_not_run))
         }
-        var pumpEnactResult = pumpEnactResultProvider.get()
+        var pumpEnactResult = pumpEnactResultProvider()
         pumpEnactResult.success(false)
         pumpEnactResult = equilManager.getTempBasalPump()
         if (pumpEnactResult.success) {
@@ -307,7 +333,7 @@ class EquilPumpPlugin @Inject constructor(
 
     override suspend fun cancelTempBasal(enforceNew: Boolean): PumpEnactResult {
         aapsLogger.debug(LTag.PUMPCOMM, "cancelTempBasal=====$enforceNew")
-        if (!isInitialized()) return pumpEnactResultProvider.get().success(false).enacted(false)
+        if (!isInitialized()) return pumpEnactResultProvider().success(false).enacted(false)
         val pumpEnactResult = equilManager.setTempBasal(0.0, 0, true)
         if (pumpEnactResult.success) {
             pumpEnactResult.isTempCancel = true
@@ -364,7 +390,7 @@ class EquilPumpPlugin @Inject constructor(
 
     override suspend fun loadTDDs(): PumpEnactResult {
         aapsLogger.debug(LTag.PUMPCOMM, "loadTDDs")
-        return pumpEnactResultProvider.get().success(false).enacted(false)
+        return pumpEnactResultProvider().success(false).enacted(false)
     }
 
     override fun isBatteryChangeLoggingEnabled(): Boolean = false
@@ -398,18 +424,18 @@ class EquilPumpPlugin @Inject constructor(
             val alarmBattery10 = preferences.get(EquilBooleanKey.AlarmBattery10)
             if (!alarmBattery10) {
                 notificationManager.post(
-                    NotificationId.FAILED_UPDATE_PROFILE,
+                    NotificationId.EQUIL_LOW_BATTERY,
                     rh.gs(R.string.equil_low_battery) + battery + "%",
-                    soundRes = app.aaps.core.ui.R.raw.alarm
+                    sound = AlarmSound.ALARM
                 )
                 preferences.put(EquilBooleanKey.AlarmBattery10, true)
             } else {
                 if (battery < 5) {
                     notificationManager.post(
-                        NotificationId.FAILED_UPDATE_PROFILE,
+                        NotificationId.EQUIL_LOW_BATTERY,
                         rh.gs(R.string.equil_low_battery) + battery + "%",
                         NotificationLevel.IMPORTANT,
-                        soundRes = app.aaps.core.ui.R.raw.alarm
+                        sound = AlarmSound.ALARM
                     )
                 }
             }
@@ -424,7 +450,7 @@ class EquilPumpPlugin @Inject constructor(
                         notificationManager.post(
                             NotificationId.EQUIL_ALARM_INSULIN,
                             rh.gs(R.string.equil_low_insulin) + insulin + "U",
-                            soundRes = app.aaps.core.ui.R.raw.alarm
+                            sound = AlarmSound.ALARM
                         )
                         preferences.put(EquilBooleanKey.AlarmInsulin10, true)
                     }
@@ -437,7 +463,7 @@ class EquilPumpPlugin @Inject constructor(
                         notificationManager.post(
                             NotificationId.EQUIL_ALARM_INSULIN,
                             rh.gs(R.string.equil_low_insulin) + insulin + "U",
-                            soundRes = app.aaps.core.ui.R.raw.alarm
+                            sound = AlarmSound.ALARM
                         )
                         preferences.put(EquilBooleanKey.AlarmInsulin5, true)
                     }
@@ -448,7 +474,7 @@ class EquilPumpPlugin @Inject constructor(
                     notificationManager.post(
                         NotificationId.EQUIL_ALARM_INSULIN,
                         rh.gs(R.string.equil_low_insulin) + insulin + "U",
-                        soundRes = app.aaps.core.ui.R.raw.alarm
+                        sound = AlarmSound.ALARM
                     )
                 }
             }
